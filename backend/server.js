@@ -1,6 +1,6 @@
 // server.js
 // Central WebSocket backend for all games (Flavor Frenzy / popcorn adapter etc.)
-
+require("dotenv").config();
 const http = require("http");
 const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
