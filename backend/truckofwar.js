@@ -342,7 +342,18 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
   const winningTeam =
     st.winningTeamIndex === 0 ? "Team A" : st.winningTeamIndex === 1 ? "Team B" : "Unknown";
 
-  const { gtrByNameKey, ttrByNameKey, stateByNameKey } = computeRanks(st, st.winningTeamIndex);
+  const { list, gtrByNameKey, ttrByNameKey, stateByNameKey } = computeRanks(st, st.winningTeamIndex);
+
+  const topGtr = list
+    .map((p) => ({
+      username: p.name,
+      gtr: gtrByNameKey[p.nameKey] ?? 0,
+    }))
+    .sort((a, b) => {
+      if (b.gtr !== a.gtr) return b.gtr - a.gtr;
+      return String(a.username).localeCompare(String(b.username));
+    })
+    .slice(0, 10);
 
   // Cache results by nameKey (stable for resume)
   for (const meta of Object.values(st.playerMetaByUid)) {
@@ -377,6 +388,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
       ttr: result.ttr,
       gtr: result.gtr,
       reason: reason || null,
+      topGtr,
     });
   }
 

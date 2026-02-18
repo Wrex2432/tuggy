@@ -58,6 +58,7 @@ const uidHint = $("uidHint");
 
 const roomCodeEl = $("roomCode");
 const codeLabelEl = $("codeLabel");
+const roomCodeWrapEl = $("roomCodeWrap");
 const usernameEl = $("username");
 const btnJoin = $("btnJoin");
 
@@ -75,6 +76,8 @@ const endTaps = $("endTaps");
 const endTTR = $("endTTR");
 const endGTR = $("endGTR");
 const btnRestart = $("btnRestart");
+const leaderboardWrap = $("leaderboardWrap");
+const leaderboardList = $("leaderboardList");
 
 /** =========================
  *  State
@@ -99,6 +102,7 @@ let tapFlushTimer = null;
 /** round popup countdown timer */
 let roundPopupTimer = null;
 let roundCountdownTimer = null;
+let hasSeenRoundEnd = false;
 
 /** =========================
  *  UID
@@ -315,7 +319,28 @@ function goToControl() {
   showView("control");
 }
 
-function goToEnd({ won, ttr, gtr, winningTeamLabel }) {
+function renderLeaderboard(entries) {
+  if (!leaderboardWrap || !leaderboardList) return;
+  leaderboardList.innerHTML = "";
+
+  const list = Array.isArray(entries) ? entries.slice(0, 10) : [];
+  if (!list.length) {
+    setHidden(leaderboardWrap, true);
+    return;
+  }
+
+  list.forEach((row, i) => {
+    const item = document.createElement("li");
+    const name = String(row?.username || row?.name || "Player");
+    const gtr = Number(row?.gtr ?? 0) || 0;
+    item.textContent = `${i + 1}. ${name} — GTR ${gtr}`;
+    leaderboardList.appendChild(item);
+  });
+
+  setHidden(leaderboardWrap, false);
+}
+
+function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false, leaderboard = null }) {
   showView("end");
 
   const teamLabel =
@@ -328,7 +353,10 @@ function goToEnd({ won, ttr, gtr, winningTeamLabel }) {
   if (winningTeamLabel) setText(endTitle, `GAME OVER — ${winningTeamLabel}`);
   else setText(endTitle, "GAME OVER");
 
-  setText(endResult, won ? "YOU WIN" : "YOU LOSE");
+  if (isTie) setText(endResult, "TIE");
+  else setText(endResult, won ? "YOU WIN" : "YOU LOSE");
+
+  renderLeaderboard(leaderboard);
   saveSession({ won: !!won, ttr, gtr });
 }
 
@@ -496,7 +524,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
 
     if (t === "ended") {
       setPhaseUI("ended");
-      goToEnd({ won: false, ttr: null, gtr: null });
+      goToEnd({ won: false, ttr: null, gtr: null, isTie: String(msg?.result || "").toLowerCase() === "tie" });
       return;
     }
 
@@ -507,6 +535,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
        - roundLive: { roundIndex }
     ========================= */
     if (t === "roundEnd") {
+      hasSeenRoundEnd = true;
       const res = String(msg.result || "").toLowerCase();
       const title = res === "won" ? "ROUND WON!" : "ROUND LOST!";
       showRoundPopup(title, "Please wait for next round…", 2200);
@@ -519,6 +548,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
     }
 
     if (t === "roundStarting") {
+      if (!hasSeenRoundEnd) return;
       const secs = Number(msg.bufferSeconds ?? msg.seconds ?? 3);
       showRoundCountdown(secs);
 
@@ -546,6 +576,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
       if (typeof msg.taps === "number") setTapUI(msg.taps);
 
       const st = String(msg.state || "").toLowerCase();
+      const isTie = st === "tie";
       const won =
         st === "winner" || st === "win" || st === "won" || st === "victory";
 
@@ -553,9 +584,11 @@ function connectAndJoin({ codeIn, usernameIn }) {
 
       goToEnd({
         won,
+        isTie,
         ttr: typeof msg.ttr === "number" ? msg.ttr : null,
         gtr: typeof msg.gtr === "number" ? msg.gtr : null,
         winningTeamLabel,
+        leaderboard: Array.isArray(msg.topGtr) ? msg.topGtr : null,
       });
       return;
     }
@@ -637,6 +670,7 @@ function boot() {
 
   const urlCode = parseCodeFromUrl();
   if (roomCodeEl && urlCode) roomCodeEl.value = urlCode;
+  if (roomCodeWrapEl) setHidden(roomCodeWrapEl, !!urlCode);
 
   const saved = loadSavedSession();
   if (usernameEl && saved && saved.username) usernameEl.value = saved.username;
