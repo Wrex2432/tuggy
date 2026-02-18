@@ -1,0 +1,378 @@
+/* ===== Base Reset ===== */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #0b0f17;
+  color: #eef2ff;
+}
+
+/* ===== Layout ===== */
+#app {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.view {
+  width: 100%;
+  max-width: 520px;
+}
+
+/* ===== Cards ===== */
+.card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  padding: 22px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+
+.brand {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.brand-title {
+  letter-spacing: 0.2em;
+  font-weight: 900;
+  font-size: 18px;
+}
+
+.brand-sub {
+  opacity: 0.75;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+/* ===== Form ===== */
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+.label {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 6px;
+}
+
+.input {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: #eef2ff;
+  outline: none;
+  font-size: 16px;
+}
+
+.input:focus {
+  border-color: rgba(121, 164, 255, 0.85);
+}
+
+.btn {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 12px;
+  border: 0;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #eef2ff;
+}
+
+.btn.primary {
+  background: linear-gradient(
+    135deg,
+    rgba(121, 164, 255, 0.95),
+    rgba(140, 92, 255, 0.95)
+  );
+}
+
+.btn:active {
+  transform: scale(0.99);
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+  text-align: center;
+}
+
+/* ===== Control ===== */
+.topbar {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.pill.subtle {
+  opacity: 0.85;
+  font-weight: 700;
+}
+
+.center {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+}
+
+.tap-btn {
+  width: min(320px, 86vw);
+  height: min(320px, 86vw);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 0.16),
+    rgba(0, 0, 0, 0.1)
+  );
+  color: #eef2ff;
+  font-size: 34px;
+  font-weight: 1000;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tap-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.stat-label {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 4px;
+}
+
+.stat-value.small {
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+
+.subhint {
+  font-size: 13px;
+  opacity: 0.8;
+  text-align: center;
+}
+
+/* ===== End ===== */
+.end-card {
+  text-align: center;
+}
+
+.end-title {
+  font-weight: 1000;
+  letter-spacing: 0.14em;
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.end-result {
+  font-size: 40px;
+  font-weight: 1000;
+  margin-bottom: 16px;
+}
+
+.end-stats {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.end-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.end-row:last-child {
+  border-bottom: 0;
+}
+
+.end-k {
+  opacity: 0.75;
+}
+
+.end-v {
+  font-weight: 900;
+}
+
+/* ===== Loading overlay ===== */
+.loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 999;
+}
+
+.loading-card {
+  width: min(360px, 92vw);
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  margin: 0 auto 10px;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-title {
+  font-weight: 900;
+}
+
+.loading-sub {
+  margin-top: 4px;
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+.uid-hint {
+  margin-top: 10px;
+  font-size: 11px;
+  opacity: 0.6;
+  letter-spacing: 0.03em;
+}
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: rgba(255, 60, 60, 0.95);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  max-width: min(520px, 92vw);
+}
+
+.toast-text {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+/* ===== Status Dot ===== */
+.status-dot {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  z-index: 1100;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.status-dot.is-red {
+  background: rgba(255, 60, 60, 0.95);
+}
+.status-dot.is-orange {
+  background: rgba(255, 160, 40, 0.95);
+}
+
+/* ===== Round Popup ===== */
+.round-popup {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 998;
+}
+
+.round-card {
+  width: min(420px, 92vw);
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+
+.round-title {
+  font-weight: 1000;
+  letter-spacing: 0.12em;
+  font-size: 16px;
+}
+
+.round-body {
+  margin-top: 8px;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* ===== Utility ===== */
+.hidden {
+  display: none !important;
+}

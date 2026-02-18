@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Truck Of War Controller</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Status Dot (top-left) -->
+      <div id="statusDot" class="status-dot hidden" aria-hidden="true"></div>
+
+      <!-- ===== LOADING (overlay) ===== -->
+      <div id="loading" class="loading hidden" aria-hidden="true">
+        <div class="loading-card">
+          <div class="spinner" aria-hidden="true"></div>
+          <div id="loadingTitle" class="loading-title">Connecting…</div>
+          <div id="loadingSub" class="loading-sub">Please keep this page open.</div>
+          <div id="uidHint" class="uid-hint hidden"></div>
+        </div>
+      </div>
+
+      <!-- ===== ROUND POPUP (overlay) ===== -->
+      <div id="roundPopup" class="round-popup hidden" aria-hidden="true">
+        <div class="round-card">
+          <div id="roundPopupTitle" class="round-title">ROUND</div>
+          <div id="roundPopupBody" class="round-body">—</div>
+        </div>
+      </div>
+
+      <!-- ===== ERROR TOAST ===== -->
+      <div id="toast" class="toast hidden" role="alert" aria-live="polite">
+        <div id="toastText" class="toast-text">Error</div>
+      </div>
+
+      <!-- ===== INPUT PAGE ===== -->
+      <section id="viewInput" class="view">
+        <div class="card">
+          <div class="brand">
+            <div class="brand-title">TRUCK OF WAR</div>
+            <div class="brand-sub">Player Controller</div>
+          </div>
+
+          <div class="form">
+            <label id="codeLabel" class="label" for="roomCode">Room Code</label>
+            <input
+              id="roomCode"
+              class="input"
+              type="text"
+              inputmode="latin"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              maxlength="8"
+              placeholder="ABCD"
+            />
+
+            <label class="label" for="username">Username</label>
+            <input
+              id="username"
+              class="input"
+              type="text"
+              autocomplete="off"
+              autocapitalize="words"
+              spellcheck="false"
+              maxlength="24"
+              placeholder="Your name"
+            />
+
+            <button id="btnJoin" class="btn primary" type="button">
+              JOIN
+            </button>
+
+            <div class="hint">
+              Tip: If you scanned a QR, your room code may already be filled.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== CONTROL PAGE ===== -->
+      <section id="viewControl" class="view hidden">
+        <div class="topbar">
+          <div class="pill" id="teamPill">TEAM —</div>
+          <div class="pill subtle" id="statusPill">WAITING</div>
+        </div>
+
+        <div class="center">
+          <button id="btnTap" class="tap-btn" type="button" disabled>
+            TAP
+          </button>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-label">Your Taps</div>
+              <div id="tapCount" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Room</div>
+              <div id="roomView" class="stat-value small">—</div>
+            </div>
+          </div>
+
+          <div class="subhint" id="subhint">
+            Waiting for the game to start…
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== END PAGE ===== -->
+      <section id="viewEnd" class="view hidden">
+        <div class="card end-card">
+          <div id="endTitle" class="end-title">GAME OVER</div>
+          <div id="endResult" class="end-result">—</div>
+
+          <div class="end-stats">
+            <div class="end-row">
+              <div class="end-k">Team</div>
+              <div id="endTeam" class="end-v">—</div>
+            </div>
+            <div class="end-row">
+              <div class="end-k">Your Taps</div>
+              <div id="endTaps" class="end-v">0</div>
+            </div>
+            <div class="end-row">
+              <div class="end-k">Team Rank</div>
+              <div id="endTTR" class="end-v">—</div>
+            </div>
+            <div class="end-row">
+              <div class="end-k">Global Rank</div>
+              <div id="endGTR" class="end-v">—</div>
+            </div>
+          </div>
+
+          <button id="btnRestart" class="btn" type="button">
+            PLAY AGAIN
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
