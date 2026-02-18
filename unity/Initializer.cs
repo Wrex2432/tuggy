@@ -51,7 +51,7 @@ public class Initializer : MonoBehaviour
         // NEW/CONFIRMED: code length control (default 4)
         public int roomCodeLength = 4;
 
-        public int lobbyDurationSeconds = 20;
+        public int lobbyDurationSeconds = 60;
         public string allowManualStartKey = "n";
 
         public int bufferCountdownSeconds = 3;
@@ -274,7 +274,8 @@ public class Initializer : MonoBehaviour
             return;
         }
 
-        if (_cfg.lobbyDurationSeconds < 0) _cfg.lobbyDurationSeconds = 0;
+        // Default to 60s lobby if value is missing/invalid to avoid accidental instant starts.
+        if (_cfg.lobbyDurationSeconds <= 0) _cfg.lobbyDurationSeconds = 60;
         if (_cfg.bufferCountdownSeconds < 0) _cfg.bufferCountdownSeconds = 0;
 
         UpdateStatus(
@@ -391,10 +392,8 @@ public class Initializer : MonoBehaviour
 
         SetCodeText(_roomCode);
 
-        if (_cfg.lobbyDurationSeconds == 0)
-        {
-            BeginBufferCountdown();
-        }
+        // NOTE: Do not auto-bypass lobby on enter. Start should happen only by key press
+        // or when the lobby timer naturally expires in Update().
     }
 
     private void BeginBufferCountdown()
@@ -409,18 +408,8 @@ public class Initializer : MonoBehaviour
         // Keep backend phase=join until BeginGame (taps gated by backend)
         if (gameLogic != null) gameLogic.SetPhaseBuffer(secs);
 
-        // NEW: Tell backend/webapps that Round 1 is starting with a buffer
-        // So the web app can show: "New round starting in 3..."
-        if (backend != null)
-        {
-            var payload = new Dictionary<string, object>
-            {
-                { "kind", "roundStarting" },
-                { "bufferSeconds", secs },
-                { "roundIndex", 1 }
-            };
-            backend.SendUnityMsg(_roomCode, payload);
-        }
+        // Intentionally do NOT emit "roundStarting" for Round 1 startup buffer.
+        // Web should reserve "NEXT ROUND" UX for between-round transitions only.
     }
 
     private void BeginGame()

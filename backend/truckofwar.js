@@ -247,6 +247,42 @@ function computeRanks(st, winningTeamIndex) {
   return { list, gtrByNameKey, ttrByNameKey, stateByNameKey };
 }
 
+function computeTeamTapTotals(st) {
+  let teamATaps = 0;
+  let teamBTaps = 0;
+
+  for (const meta of Object.values(st.playerMetaByUid || {})) {
+    const taps = Math.max(0, Number(meta?.taps || 0) || 0);
+    if (meta?.teamIndex === 0) teamATaps += taps;
+    else if (meta?.teamIndex === 1) teamBTaps += taps;
+  }
+
+  return { teamATaps, teamBTaps };
+}
+
+function resolveWinnerTeamIndex(st, explicitWinnerTeamIndex) {
+  if (explicitWinnerTeamIndex === 0 || explicitWinnerTeamIndex === 1) {
+    return explicitWinnerTeamIndex;
+  }
+
+  const { teamATaps, teamBTaps } = computeTeamTapTotals(st);
+  if (teamATaps > teamBTaps) return 0;
+  if (teamBTaps > teamATaps) return 1;
+
+  const teamAPlayers = Object.values(st.playerMetaByUid || {}).filter(
+    (meta) => meta?.teamIndex === 0
+  ).length;
+  const teamBPlayers = Object.values(st.playerMetaByUid || {}).filter(
+    (meta) => meta?.teamIndex === 1
+  ).length;
+
+  if (teamAPlayers > teamBPlayers) return 0;
+  if (teamBPlayers > teamAPlayers) return 1;
+
+  // Final deterministic fallback (no ties): Team A.
+  return 0;
+}
+
 function buildS3Json(session) {
   const st = ensureState(session);
 
@@ -296,7 +332,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
 
   if (session.phase === "ended") return;
 
-  st.winningTeamIndex = winnerTeamIndex === 0 || winnerTeamIndex === 1 ? winnerTeamIndex : null;
+  st.winningTeamIndex = resolveWinnerTeamIndex(st, winnerTeamIndex);
 
   if (!st.timeEnded) st.timeEnded = nowIso();
   if (!st.timeStarted) st.timeStarted = st.timeEnded;
