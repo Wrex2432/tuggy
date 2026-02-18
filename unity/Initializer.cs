@@ -56,6 +56,10 @@ public class Initializer : MonoBehaviour
 
         public int bufferCountdownSeconds = 3;
 
+        // Round timer: if neither team reaches goal before timeout,
+        // winner is the team with more taps (no ties).
+        public int roundDurationSeconds = 230;
+
         public int totalRounds = 3;
 
         public float tapStrengthMultiplier = 1.0f;
@@ -277,6 +281,7 @@ public class Initializer : MonoBehaviour
         // Default to 60s lobby if value is missing/invalid to avoid accidental instant starts.
         if (_cfg.lobbyDurationSeconds <= 0) _cfg.lobbyDurationSeconds = 60;
         if (_cfg.bufferCountdownSeconds < 0) _cfg.bufferCountdownSeconds = 0;
+        if (_cfg.roundDurationSeconds <= 0) _cfg.roundDurationSeconds = 230;
 
         UpdateStatus(
             "CONTROL LOADED",
