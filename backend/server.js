@@ -300,6 +300,8 @@ wss.on("connection", (ws) => {
         // NEW: tier config from control.json
         winTopUnderStart,
         winTopUnderMax,
+        // Optional S3 bucket override for Truck Of War record export
+        s3Bucket,
       } = msg;
 
       // sanitize/validate teamAssignmentMode, default to "roundRobin"
@@ -403,6 +405,7 @@ wss.on("connection", (ws) => {
         // store tier range config (as raw values; adapter will parse)
         winTopUnderStart: winTopUnderStart,
         winTopUnderMax: winTopUnderMax,
+        s3Bucket: (s3Bucket || "").toString().trim(),
 
         phase: "join", // "join" | "active" | "ended"
         unity: { ws },
@@ -432,6 +435,7 @@ wss.on("connection", (ws) => {
         // pass win-tier configuration to adapter
         winTopUnderStart: session.winTopUnderStart,
         winTopUnderMax: session.winTopUnderMax,
+        s3Bucket: session.s3Bucket,
       });
 
       sessions.set(session.code, session);

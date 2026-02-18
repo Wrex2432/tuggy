@@ -143,11 +143,23 @@ function snapshot(session) {
    S3 Upload (best-effort)
 =========================== */
 
-function getS3BucketName() {
+let _hasLoggedMissingBucket = false;
+
+function getS3BucketName(session) {
+  const fromSession =
+    session?.s3Bucket ||
+    session?.state?.s3Bucket ||
+    session?.state?.recordBucket ||
+    "";
+
   return (
+    fromSession ||
     process.env.S3_BUCKET_NAME ||
     process.env.CINEMAGAMES_S3_BUCKET ||
+    process.env.CINEMAGAMES_BUCKET ||
     process.env.AWS_S3_BUCKET ||
+    process.env.AWS_BUCKET ||
+    process.env.AWS_BUCKET_NAME ||
     process.env.S3_BUCKET ||
     ""
   ).trim();
@@ -155,7 +167,13 @@ function getS3BucketName() {
 
 async function uploadJsonToS3({ bucket, key, bodyObj }) {
   if (!bucket) {
-    console.warn("[truckofwar] S3 bucket env not set; skipping upload");
+    if (!_hasLoggedMissingBucket) {
+      console.info(
+        "[truckofwar] S3 bucket not configured; skipping Truck Of War upload. " +
+          "Set S3_BUCKET_NAME (or CINEMAGAMES_S3_BUCKET/AWS_BUCKET_NAME) to enable."
+      );
+      _hasLoggedMissingBucket = true;
+    }
     return { ok: false, reason: "missing_bucket" };
   }
 
@@ -393,7 +411,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
   }
 
   const jsonObj = buildS3Json(session);
-  const bucket = getS3BucketName();
+  const bucket = getS3BucketName(session);
   const dt = compactIsoForFilename(jsonObj.timeEnded || nowIso());
   const key = `games/truckofwar/tow${dt}_${session.code}.json`;
 
@@ -438,6 +456,7 @@ module.exports = {
 
       timeStarted: "",
       timeEnded: "",
+      s3Bucket: (cfg?.s3Bucket || "").toString().trim(),
     };
   },
 
