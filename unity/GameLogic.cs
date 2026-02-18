@@ -1,5 +1,5 @@
 // GameLogic.cs
-// Truck Of War — Game brain (rules + rope/marker + best-of + win condition)
+// Truck Of War â€” Game brain (rules + rope/marker + best-of + win condition)
 //
 // Responsibilities:
 // - Owns match state (Lobby/Buffer/Active/RoundIntermission/Ended)
@@ -55,6 +55,10 @@ public class GameLogic : MonoBehaviour
 
         public int bufferCountdownSeconds = 3;
 
+        // Per-round timer. If time runs out before a goal hit,
+        // round winner is decided by total taps in that round.
+        public int roundDurationSeconds = 230;
+
         public int totalRounds = 3; // best-of (odd recommended)
 
         public float tapStrengthMultiplier = 1.0f;
@@ -109,6 +113,7 @@ public class GameLogic : MonoBehaviour
     private int _winsB = 0;
 
     private float _bufferEndsAt = 0f;
+    private float _roundEndsAt = 0f;
 
     // marker motion
     private float _startX = 0f;
@@ -118,6 +123,8 @@ public class GameLogic : MonoBehaviour
     // tap accumulation (per fixed step)
     private int _pendingTapsA = 0;
     private int _pendingTapsB = 0;
+    private int _roundTapA = 0;
+    private int _roundTapB = 0;
 
     // optional per-player tap tracking for visuals/debug
     private readonly Dictionary<string, int> _playerTaps = new Dictionary<string, int>(); // uid -> taps
@@ -152,6 +159,7 @@ public class GameLogic : MonoBehaviour
             lobbyDurationSeconds = cfgFromInitializer.lobbyDurationSeconds,
             allowManualStartKey = cfgFromInitializer.allowManualStartKey,
             bufferCountdownSeconds = cfgFromInitializer.bufferCountdownSeconds,
+            roundDurationSeconds = cfgFromInitializer.roundDurationSeconds,
             totalRounds = cfgFromInitializer.totalRounds,
             tapStrengthMultiplier = cfgFromInitializer.tapStrengthMultiplier,
             allowLateJoin = cfgFromInitializer.allowLateJoin,
@@ -258,6 +266,9 @@ public class GameLogic : MonoBehaviour
         if (teamIndex == 0) _pendingTapsA += c;
         else if (teamIndex == 1) _pendingTapsB += c;
 
+        if (teamIndex == 0) _roundTapA += c;
+        else if (teamIndex == 1) _roundTapB += c;
+
         // Optional: track for debug
         if (!string.IsNullOrEmpty(uid))
         {
@@ -289,6 +300,12 @@ public class GameLogic : MonoBehaviour
             {
                 BeginRoundActive();
             }
+            UpdateUI();
+        }
+
+        if (_phase == Phase.RoundActive && Time.time >= _roundEndsAt)
+        {
+            OnRoundTimeout();
             UpdateUI();
         }
     }
@@ -352,6 +369,8 @@ public class GameLogic : MonoBehaviour
 
         _pendingTapsA = 0;
         _pendingTapsB = 0;
+        _roundTapA = 0;
+        _roundTapB = 0;
 
         ResetMarkerToCenter();
 
@@ -393,11 +412,25 @@ public class GameLogic : MonoBehaviour
 
         _pendingTapsA = 0;
         _pendingTapsB = 0;
+        _roundTapA = 0;
+        _roundTapB = 0;
+
+        int roundSeconds = (_cfg != null) ? Mathf.Max(1, _cfg.roundDurationSeconds) : 230;
+        _roundEndsAt = Time.time + roundSeconds;
 
         SetPhase(Phase.RoundActive);
         // NEW: tell web apps the round is now live (enable taps after buffer)
         SendRoundLive(_roundIndex);
         UpdateUI();
+    }
+
+
+    private void OnRoundTimeout()
+    {
+        if (_phase != Phase.RoundActive) return;
+
+        int winnerTeamIndex = _roundTapA >= _roundTapB ? 0 : 1;
+        OnRoundWin(winnerTeamIndex);
     }
 
     private void CheckGoalHit(float leftX, float rightX)

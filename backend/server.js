@@ -219,15 +219,8 @@ function scheduleUnityTimeout(session) {
       return;
     }
 
-    // Unity still gone after grace → end session
-    if (current.phase !== "ended") {
-      broadcastToPlayers(current, {
-        type: "ended",
-        reason: "unity_disconnected_timeout",
-      });
-    }
-
-    // NEW: TruckOfWar-only forced-end hook (best-effort; no await)
+    // NEW: TruckOfWar-only forced-end hook.
+    // Let adapter compute winner + send gameResult before teardown.
     try {
       const adapter = adapters[current.gameType];
       if (
@@ -237,10 +230,23 @@ function scheduleUnityTimeout(session) {
       ) {
         Promise.resolve(
           adapter.onForcedEnd(current, { reason: "unity_disconnected_timeout" })
-        ).catch(() => {});
+        )
+          .catch(() => {})
+          .finally(() => {
+            endSession(current);
+          });
+        return;
       }
     } catch (_) {}
     // NEW: end TruckOfWar-only forced-end hook
+
+    // Unity still gone after grace → end session
+    if (current.phase !== "ended") {
+      broadcastToPlayers(current, {
+        type: "ended",
+        reason: "unity_disconnected_timeout",
+      });
+    }
 
     endSession(current);
   }, UNITY_DISCONNECT_GRACE_MS);
