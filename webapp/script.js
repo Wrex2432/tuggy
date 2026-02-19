@@ -99,6 +99,7 @@ let tapFlushTimer = null;
 /** round popup countdown timer */
 let roundPopupTimer = null;
 let roundCountdownTimer = null;
+let hasSeenRoundEnd = false;
 
 /** =========================
  *  UID
@@ -163,6 +164,9 @@ const CODE_LEN = getCodeLenFromUrlOrDefault();
 
 function parseCodeFromUrl() {
   const u = new URL(window.location.href);
+  const cd = (u.searchParams.get("cd") || "").trim();
+  if (cd) return normalizeCode(cd);
+
   const q = (u.searchParams.get("code") || "").trim();
   if (q) return normalizeCode(q);
 
@@ -315,7 +319,7 @@ function goToControl() {
   showView("control");
 }
 
-function goToEnd({ won, ttr, gtr, winningTeamLabel }) {
+function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false }) {
   showView("end");
 
   const teamLabel =
@@ -328,7 +332,9 @@ function goToEnd({ won, ttr, gtr, winningTeamLabel }) {
   if (winningTeamLabel) setText(endTitle, `GAME OVER — ${winningTeamLabel}`);
   else setText(endTitle, "GAME OVER");
 
-  setText(endResult, won ? "YOU WIN" : "YOU LOSE");
+  if (isTie) setText(endResult, "TIE");
+  else setText(endResult, won ? "YOU WIN" : "YOU LOSE");
+
   saveSession({ won: !!won, ttr, gtr });
 }
 
@@ -496,7 +502,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
 
     if (t === "ended") {
       setPhaseUI("ended");
-      goToEnd({ won: false, ttr: null, gtr: null });
+      goToEnd({ won: false, ttr: null, gtr: null, isTie: String(msg?.result || "").toLowerCase() === "tie" });
       return;
     }
 
@@ -507,6 +513,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
        - roundLive: { roundIndex }
     ========================= */
     if (t === "roundEnd") {
+      hasSeenRoundEnd = true;
       const res = String(msg.result || "").toLowerCase();
       const title = res === "won" ? "ROUND WON!" : "ROUND LOST!";
       showRoundPopup(title, "Please wait for next round…", 2200);
@@ -519,6 +526,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
     }
 
     if (t === "roundStarting") {
+      if (!hasSeenRoundEnd) return;
       const secs = Number(msg.bufferSeconds ?? msg.seconds ?? 3);
       showRoundCountdown(secs);
 
@@ -546,6 +554,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
       if (typeof msg.taps === "number") setTapUI(msg.taps);
 
       const st = String(msg.state || "").toLowerCase();
+      const isTie = st === "tie";
       const won =
         st === "winner" || st === "win" || st === "won" || st === "victory";
 
@@ -553,6 +562,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
 
       goToEnd({
         won,
+        isTie,
         ttr: typeof msg.ttr === "number" ? msg.ttr : null,
         gtr: typeof msg.gtr === "number" ? msg.gtr : null,
         winningTeamLabel,

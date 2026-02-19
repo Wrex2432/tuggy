@@ -56,6 +56,10 @@ public class Initializer : MonoBehaviour
 
         public int bufferCountdownSeconds = 3;
 
+        // Round timer: if neither team reaches goal before timeout,
+        // winner is the team with more taps (no ties).
+        public int roundDurationSeconds = 230;
+
         public int totalRounds = 3;
 
         public float tapStrengthMultiplier = 1.0f;
@@ -277,6 +281,7 @@ public class Initializer : MonoBehaviour
         // Default to 60s lobby if value is missing/invalid to avoid accidental instant starts.
         if (_cfg.lobbyDurationSeconds <= 0) _cfg.lobbyDurationSeconds = 60;
         if (_cfg.bufferCountdownSeconds < 0) _cfg.bufferCountdownSeconds = 0;
+        if (_cfg.roundDurationSeconds <= 0) _cfg.roundDurationSeconds = 230;
 
         UpdateStatus(
             "CONTROL LOADED",
@@ -477,6 +482,17 @@ public class Initializer : MonoBehaviour
     private void HandleTowRecordSaved(BackendConnector.TowRecordSavedMsg msg)
     {
         Debug.Log($"[TOW] recordSaved ok={msg.ok} key={msg.key} bucket={msg.bucket} reason={msg.reason}");
+
+        if (msg?.topGtr != null && msg.topGtr.Length > 0)
+        {
+            Debug.Log("[TOW] Top 10 tappers (GTR):");
+            for (int i = 0; i < msg.topGtr.Length; i++)
+            {
+                var row = msg.topGtr[i];
+                if (row == null) continue;
+                Debug.Log($"[TOW] #{i + 1} {row.username} - GTR {row.gtr}");
+            }
+        }
     }
 
     private void HandleTowPaused(BackendConnector.TowPausedMsg msg)
