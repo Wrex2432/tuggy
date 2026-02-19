@@ -170,14 +170,9 @@ function parseCodeFromUrl() {
   const cd = (u.searchParams.get("cd") || "").trim();
   if (cd) return normalizeCode(cd);
 
-  const q = (u.searchParams.get("code") || "").trim();
-  if (q) return normalizeCode(q);
+  const c = (u.searchParams.get("c") || "").trim();
+  if (c) return normalizeCode(c);
 
-  const parts = u.pathname.split("/").filter(Boolean);
-  if (!parts.length) return "";
-  const last = parts[parts.length - 1];
-
-  if (/^[a-zA-Z]{3,8}$/.test(last)) return normalizeCode(last);
   return "";
 }
 
