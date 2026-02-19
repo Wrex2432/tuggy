@@ -219,15 +219,8 @@ function scheduleUnityTimeout(session) {
       return;
     }
 
-    // Unity still gone after grace → end session
-    if (current.phase !== "ended") {
-      broadcastToPlayers(current, {
-        type: "ended",
-        reason: "unity_disconnected_timeout",
-      });
-    }
-
-    // NEW: TruckOfWar-only forced-end hook (best-effort; no await)
+    // NEW: TruckOfWar-only forced-end hook.
+    // Let adapter compute winner + send gameResult before teardown.
     try {
       const adapter = adapters[current.gameType];
       if (
@@ -237,10 +230,23 @@ function scheduleUnityTimeout(session) {
       ) {
         Promise.resolve(
           adapter.onForcedEnd(current, { reason: "unity_disconnected_timeout" })
-        ).catch(() => {});
+        )
+          .catch(() => {})
+          .finally(() => {
+            endSession(current);
+          });
+        return;
       }
     } catch (_) {}
     // NEW: end TruckOfWar-only forced-end hook
+
+    // Unity still gone after grace → end session
+    if (current.phase !== "ended") {
+      broadcastToPlayers(current, {
+        type: "ended",
+        reason: "unity_disconnected_timeout",
+      });
+    }
 
     endSession(current);
   }, UNITY_DISCONNECT_GRACE_MS);
@@ -294,6 +300,8 @@ wss.on("connection", (ws) => {
         // NEW: tier config from control.json
         winTopUnderStart,
         winTopUnderMax,
+        // Optional S3 bucket override for Truck Of War record export
+        s3Bucket,
       } = msg;
 
       // sanitize/validate teamAssignmentMode, default to "roundRobin"
@@ -397,6 +405,7 @@ wss.on("connection", (ws) => {
         // store tier range config (as raw values; adapter will parse)
         winTopUnderStart: winTopUnderStart,
         winTopUnderMax: winTopUnderMax,
+        s3Bucket: (s3Bucket || "").toString().trim(),
 
         phase: "join", // "join" | "active" | "ended"
         unity: { ws },
@@ -426,6 +435,7 @@ wss.on("connection", (ws) => {
         // pass win-tier configuration to adapter
         winTopUnderStart: session.winTopUnderStart,
         winTopUnderMax: session.winTopUnderMax,
+        s3Bucket: session.s3Bucket,
       });
 
       sessions.set(session.code, session);

@@ -1,5 +1,5 @@
 // BackendConnector.cs
-// Truck Of War — WebSocket bridge ONLY (no game logic)
+// Truck Of War â€” WebSocket bridge ONLY (no game logic)
 //
 // Responsibilities:
 // - Connect to EC2 WebSocket
@@ -26,7 +26,7 @@
 //   Window > Package Manager > + (Add package from git URL)
 //   https://github.com/endel/NativeWebSocket.git
 //
-// If you already have a WebSocket lib you prefer, tell me and I’ll adapt.
+// If you already have a WebSocket lib you prefer, tell me and Iâ€™ll adapt.
 
 using System;
 using System.Collections.Generic;
@@ -175,6 +175,13 @@ public class BackendConnector : MonoBehaviour
     }
 
     [Serializable]
+    public class TowTopTapper
+    {
+        public string username;
+        public int gtr;
+    }
+
+    [Serializable]
     public class TowRecordSavedMsg
     {
         public string type;   // "recordSaved"
@@ -184,6 +191,7 @@ public class BackendConnector : MonoBehaviour
         public string reason;
         public string endedReason;
         public string winningTeam;
+        public TowTopTapper[] topGtr;
     }
 
     // Generic wrapper to quickly read "type"
@@ -226,7 +234,7 @@ public class BackendConnector : MonoBehaviour
 
         _connecting = true;
 
-        if (verboseLogs) Debug.Log($"[BackendConnector] Connecting to {serverUrl} …");
+        if (verboseLogs) Debug.Log($"[BackendConnector] Connecting to {serverUrl} â€¦");
 
         _ws = new WebSocket(serverUrl);
 
