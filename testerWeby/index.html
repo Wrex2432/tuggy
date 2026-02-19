@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Truck Of War Multi Tester</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>testerWeby — Truck Of War Simulator</h1>
+      <p class="sub">Standalone local tester for simulating many players joining/tapping.</p>
+
+      <section class="card controls">
+        <label>WebSocket URL
+          <input id="wsUrl" value="wss://api.prologuebymetama.com/ws" />
+        </label>
+        <label>Room Code
+          <input id="roomCode" placeholder="ABCD" maxlength="8" />
+        </label>
+        <label>Player Count
+          <input id="playerCount" type="number" min="1" max="100" value="10" />
+        </label>
+        <label>Name Prefix
+          <input id="namePrefix" value="bot" />
+        </label>
+        <label>Tap Interval (ms)
+          <input id="tapMs" type="number" min="20" max="5000" value="120" />
+        </label>
+
+        <div class="actions">
+          <button id="btnJoin">Join All</button>
+          <button id="btnLeave" class="warn">Leave All</button>
+          <button id="btnTapStart">Start Auto Tap</button>
+          <button id="btnTapStop" class="warn">Stop Auto Tap</button>
+        </div>
+      </section>
+
+      <section class="card stats">
+        <div>Connected: <strong id="connected">0</strong></div>
+        <div>Joined OK: <strong id="joined">0</strong></div>
+        <div>Total Sent Taps: <strong id="sentTaps">0</strong></div>
+      </section>
+
+      <section class="card">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
