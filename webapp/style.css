@@ -376,3 +376,22 @@ body {
 .hidden {
   display: none !important;
 }
+
+.leaderboard {
+  margin-top: 14px;
+  text-align: left;
+}
+
+.leaderboard-title {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.leaderboard-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.leaderboard-list li {
+  margin: 3px 0;
+}

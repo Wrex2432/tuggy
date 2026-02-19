@@ -58,6 +58,7 @@ const uidHint = $("uidHint");
 
 const roomCodeEl = $("roomCode");
 const codeLabelEl = $("codeLabel");
+const roomCodeWrapEl = $("roomCodeWrap");
 const usernameEl = $("username");
 const btnJoin = $("btnJoin");
 
@@ -75,6 +76,8 @@ const endTaps = $("endTaps");
 const endTTR = $("endTTR");
 const endGTR = $("endGTR");
 const btnRestart = $("btnRestart");
+const leaderboardWrap = $("leaderboardWrap");
+const leaderboardList = $("leaderboardList");
 
 /** =========================
  *  State
@@ -561,6 +564,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
         ttr: typeof msg.ttr === "number" ? msg.ttr : null,
         gtr: typeof msg.gtr === "number" ? msg.gtr : null,
         winningTeamLabel,
+        leaderboard: Array.isArray(msg.topGtr) ? msg.topGtr : null,
       });
       return;
     }
@@ -642,6 +646,7 @@ function boot() {
 
   const urlCode = parseCodeFromUrl();
   if (roomCodeEl && urlCode) roomCodeEl.value = urlCode;
+  if (roomCodeWrapEl) setHidden(roomCodeWrapEl, !!urlCode);
 
   const saved = loadSavedSession();
   if (usernameEl && saved && saved.username) usernameEl.value = saved.username;
