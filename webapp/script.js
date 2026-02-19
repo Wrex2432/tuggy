@@ -167,6 +167,9 @@ const CODE_LEN = getCodeLenFromUrlOrDefault();
 
 function parseCodeFromUrl() {
   const u = new URL(window.location.href);
+  const cd = (u.searchParams.get("cd") || "").trim();
+  if (cd) return normalizeCode(cd);
+
   const q = (u.searchParams.get("code") || "").trim();
   if (q) return normalizeCode(q);
 
@@ -319,28 +322,7 @@ function goToControl() {
   showView("control");
 }
 
-function renderLeaderboard(entries) {
-  if (!leaderboardWrap || !leaderboardList) return;
-  leaderboardList.innerHTML = "";
-
-  const list = Array.isArray(entries) ? entries.slice(0, 10) : [];
-  if (!list.length) {
-    setHidden(leaderboardWrap, true);
-    return;
-  }
-
-  list.forEach((row, i) => {
-    const item = document.createElement("li");
-    const name = String(row?.username || row?.name || "Player");
-    const gtr = Number(row?.gtr ?? 0) || 0;
-    item.textContent = `${i + 1}. ${name} — GTR ${gtr}`;
-    leaderboardList.appendChild(item);
-  });
-
-  setHidden(leaderboardWrap, false);
-}
-
-function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false, leaderboard = null }) {
+function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false }) {
   showView("end");
 
   const teamLabel =
@@ -356,7 +338,6 @@ function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false, leaderboard =
   if (isTie) setText(endResult, "TIE");
   else setText(endResult, won ? "YOU WIN" : "YOU LOSE");
 
-  renderLeaderboard(leaderboard);
   saveSession({ won: !!won, ttr, gtr });
 }
 

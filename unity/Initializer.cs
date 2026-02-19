@@ -482,6 +482,17 @@ public class Initializer : MonoBehaviour
     private void HandleTowRecordSaved(BackendConnector.TowRecordSavedMsg msg)
     {
         Debug.Log($"[TOW] recordSaved ok={msg.ok} key={msg.key} bucket={msg.bucket} reason={msg.reason}");
+
+        if (msg?.topGtr != null && msg.topGtr.Length > 0)
+        {
+            Debug.Log("[TOW] Top 10 tappers (GTR):");
+            for (int i = 0; i < msg.topGtr.Length; i++)
+            {
+                var row = msg.topGtr[i];
+                if (row == null) continue;
+                Debug.Log($"[TOW] #{i + 1} {row.username} - GTR {row.gtr}");
+            }
+        }
     }
 
     private void HandleTowPaused(BackendConnector.TowPausedMsg msg)

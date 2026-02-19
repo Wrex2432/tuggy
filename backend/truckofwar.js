@@ -373,6 +373,8 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
     })
     .slice(0, 10);
 
+  console.log(`[truckofwar] Top 10 tappers for ${session.code}:`, topGtr);
+
   // Cache results by nameKey (stable for resume)
   for (const meta of Object.values(st.playerMetaByUid)) {
     st.finalResultsByNameKey[meta.nameKey] = {
@@ -425,6 +427,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
     reason: res.ok ? null : res.reason || "unknown",
     endedReason: reason || null,
     winningTeam,
+    topGtr,
   });
 }
 
