@@ -76,6 +76,8 @@ const endTaps = $("endTaps");
 const endTTR = $("endTTR");
 const endGTR = $("endGTR");
 const btnRestart = $("btnRestart");
+const leaderboardWrap = $("leaderboardWrap");
+const leaderboardList = $("leaderboardList");
 
 /** =========================
  *  State
@@ -567,6 +569,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
         ttr: typeof msg.ttr === "number" ? msg.ttr : null,
         gtr: typeof msg.gtr === "number" ? msg.gtr : null,
         winningTeamLabel,
+        leaderboard: Array.isArray(msg.topGtr) ? msg.topGtr : null,
       });
       return;
     }
