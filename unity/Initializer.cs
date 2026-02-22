@@ -55,12 +55,6 @@ public class Initializer : MonoBehaviour
         public int lobbyDurationSeconds = 60;
         public string allowManualStartKey = "n";
 
-        public int bufferCountdownSeconds = 3;
-
-        // Round timer: if neither team reaches goal before timeout,
-        // winner is the team with more taps (no ties).
-        public int roundDurationSeconds = 230;
-
         public int totalRounds = 3;
 
         public float tapStrengthMultiplier = 1.0f;
@@ -90,6 +84,9 @@ public class Initializer : MonoBehaviour
     [SerializeField] private TMP_Text countdownText;
     [SerializeField] private bool showGoMessage = true;
     [SerializeField] private float goMessageDuration = 0.5f;
+
+    [Header("Optional Endgame Leaderboard (TMP)")]
+    [SerializeField] private TMP_Text topTappersText;
 
     [Header("Control.json")]
     [Tooltip("Filename only. Will search Project Root first, then StreamingAssets, then Assets (Editor fallback).")]
@@ -175,7 +172,7 @@ public class Initializer : MonoBehaviour
             return;
         }
 
-        HideCountdown();
+        HideExternalCountdown();
         SyncStartButtonState();
         if (startGameButton != null)
         {
@@ -241,7 +238,7 @@ public class Initializer : MonoBehaviour
 
             if (!_bufferShowingGo)
             {
-                ShowCountdown(Mathf.CeilToInt(remaining).ToString());
+                ShowExternalCountdown(Mathf.CeilToInt(remaining).ToString());
             }
 
             if (Time.time >= _bufferEndsAt)
@@ -252,7 +249,7 @@ public class Initializer : MonoBehaviour
                     {
                         _bufferShowingGo = true;
                         _bufferGoEndsAt = Time.time + Mathf.Max(0f, goMessageDuration);
-                        ShowCountdown("GO!");
+                        ShowExternalCountdown("GO!");
                     }
 
                     if (Time.time >= _bufferGoEndsAt)
@@ -336,8 +333,6 @@ public class Initializer : MonoBehaviour
 
         // Default to 60s lobby if value is missing/invalid to avoid accidental instant starts.
         if (_cfg.lobbyDurationSeconds <= 0) _cfg.lobbyDurationSeconds = 60;
-        if (_cfg.bufferCountdownSeconds < 0) _cfg.bufferCountdownSeconds = 0;
-        if (_cfg.roundDurationSeconds <= 0) _cfg.roundDurationSeconds = 230;
 
         UpdateStatus(
             "CONTROL LOADED",
@@ -463,11 +458,11 @@ public class Initializer : MonoBehaviour
 
         SetState(BootState.BufferCountdown);
 
-        int secs = Mathf.Max(0, _cfg.bufferCountdownSeconds);
+        int secs = gameLogic != null ? gameLogic.GetBufferCountdownSeconds() : 3;
         _bufferEndsAt = Time.time + secs;
         _bufferGoEndsAt = 0f;
         _bufferShowingGo = false;
-        ShowCountdown(Mathf.Max(1, secs).ToString());
+        ShowExternalCountdown(Mathf.Max(1, secs).ToString());
 
         // Keep backend phase=join until BeginGame (taps gated by backend)
         if (gameLogic != null) gameLogic.SetPhaseBuffer(secs);
@@ -479,7 +474,7 @@ public class Initializer : MonoBehaviour
     private void BeginGame()
     {
         SetState(BootState.InGame);
-        HideCountdown();
+        HideExternalCountdown();
 
         // Tell backend taps are now valid
         backend.SendUnityPhase(_roomCode, "active");
@@ -543,6 +538,11 @@ public class Initializer : MonoBehaviour
     {
         Debug.Log($"[TOW] recordSaved ok={msg.ok} key={msg.key} bucket={msg.bucket} reason={msg.reason}");
 
+        if (topTappersText != null)
+        {
+            topTappersText.text = BuildTopTappersText(msg);
+        }
+
         if (msg?.topGtr != null && msg.topGtr.Length > 0)
         {
             Debug.Log("[TOW] Top 10 tappers (GTR):");
@@ -553,6 +553,82 @@ public class Initializer : MonoBehaviour
                 Debug.Log($"[TOW] #{i + 1} {row.username} - GTR {row.gtr}");
             }
         }
+
+        if (msg?.topByTtr != null && msg.topByTtr.Length > 0)
+        {
+            Debug.Log("[TOW] Winner/Loser leaderboard (TTR):");
+            for (int i = 0; i < msg.topByTtr.Length; i++)
+            {
+                var row = msg.topByTtr[i];
+                if (row == null) continue;
+                Debug.Log($"[TOW] #{i + 1} {row.username} - TTR {row.ttr} ({row.state})");
+            }
+        }
+    }
+
+    private string BuildTopTappersText(BackendConnector.TowRecordSavedMsg msg)
+    {
+        if (msg?.topByTtr == null || msg.topByTtr.Length == 0)
+            return "";
+
+        int winningTeamIndex = -1;
+        if (string.Equals(msg.winningTeam, "Team A", StringComparison.OrdinalIgnoreCase)) winningTeamIndex = 0;
+        else if (string.Equals(msg.winningTeam, "Team B", StringComparison.OrdinalIgnoreCase)) winningTeamIndex = 1;
+
+        var winners = new List<BackendConnector.TowTopTapper>();
+        var losers = new List<BackendConnector.TowTopTapper>();
+
+        for (int i = 0; i < msg.topByTtr.Length; i++)
+        {
+            var row = msg.topByTtr[i];
+            if (row == null) continue;
+
+            bool isWinnerByState = string.Equals(row.state, "winner", StringComparison.OrdinalIgnoreCase);
+            bool isLoserByState = string.Equals(row.state, "loser", StringComparison.OrdinalIgnoreCase);
+            bool isWinnerByTeam = winningTeamIndex >= 0 && row.teamIndex == winningTeamIndex;
+
+            if (isWinnerByState || isWinnerByTeam)
+            {
+                winners.Add(row);
+            }
+            else if (isLoserByState || winningTeamIndex >= 0)
+            {
+                losers.Add(row);
+            }
+        }
+
+        winners.Sort((a, b) =>
+        {
+            if (a.ttr != b.ttr) return a.ttr.CompareTo(b.ttr);
+            return string.Compare(a.username, b.username, StringComparison.OrdinalIgnoreCase);
+        });
+
+        losers.Sort((a, b) =>
+        {
+            if (a.ttr != b.ttr) return a.ttr.CompareTo(b.ttr);
+            return string.Compare(a.username, b.username, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var sb = new StringBuilder();
+        sb.AppendLine("TOP TAPPERS");
+        sb.AppendLine("Winners");
+
+        int winnerCount = Math.Min(7, winners.Count);
+        for (int i = 0; i < winnerCount; i++)
+        {
+            var row = winners[i];
+            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
+        }
+
+        sb.AppendLine("Losers");
+        int loserCount = Math.Min(3, losers.Count);
+        for (int i = 0; i < loserCount; i++)
+        {
+            var row = losers[i];
+            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     private void HandleTowPaused(BackendConnector.TowPausedMsg msg)
@@ -584,12 +660,12 @@ public class Initializer : MonoBehaviour
     private void Fail(string reason)
     {
         SetState(BootState.Error);
-        HideCountdown();
+        HideExternalCountdown();
         Debug.LogError("[Initializer] " + reason);
         UpdateStatus("ERROR", "", reason);
     }
 
-    private void ShowCountdown(string message)
+    public void ShowExternalCountdown(string message)
     {
         if (!countdownText) return;
         if (!countdownText.gameObject.activeSelf)
@@ -597,7 +673,7 @@ public class Initializer : MonoBehaviour
         countdownText.text = message;
     }
 
-    private void HideCountdown()
+    public void HideExternalCountdown()
     {
         if (countdownText)
             countdownText.gameObject.SetActive(false);

@@ -179,6 +179,9 @@ public class BackendConnector : MonoBehaviour
     {
         public string username;
         public int gtr;
+        public int ttr;
+        public int teamIndex;
+        public string state;
     }
 
     [Serializable]
@@ -192,6 +195,7 @@ public class BackendConnector : MonoBehaviour
         public string endedReason;
         public string winningTeam;
         public TowTopTapper[] topGtr;
+        public TowTopTapper[] topByTtr;
     }
 
     // Generic wrapper to quickly read "type"
