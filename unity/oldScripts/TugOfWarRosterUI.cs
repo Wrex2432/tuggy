@@ -4,6 +4,8 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 
+namespace Tuggy.LegacyUI
+{
 /// <summary>
 /// Legacy roster UI adapted for the current backend message model.
 ///
@@ -240,4 +242,5 @@ public class TugOfWarRosterUI : MonoBehaviour
 
         field.text = $"{top.username} ({top.pulls})";
     }
+}
 }

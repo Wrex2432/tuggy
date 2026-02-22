@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+namespace Tuggy.LegacyUI
+{
 /// <summary>
 /// Legacy tug movement manager adapted for the current TruckOfWar backend flow.
 ///
@@ -187,4 +189,5 @@ public class TugOfWarManager : MonoBehaviour
     {
         return teamIndex == 1 ? Team.B : Team.A;
     }
+}
 }
