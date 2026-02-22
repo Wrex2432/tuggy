@@ -86,7 +86,8 @@ public class Initializer : MonoBehaviour
     [SerializeField] private float goMessageDuration = 0.5f;
 
     [Header("Optional Endgame Leaderboard (TMP)")]
-    [SerializeField] private TMP_Text topTappersText;
+    [SerializeField] private TMP_Text top7WinnersText;
+    [SerializeField] private TMP_Text top3LosersText;
 
     [Header("Control.json")]
     [Tooltip("Filename only. Will search Project Root first, then StreamingAssets, then Assets (Editor fallback).")]
@@ -538,9 +539,14 @@ public class Initializer : MonoBehaviour
     {
         Debug.Log($"[TOW] recordSaved ok={msg.ok} key={msg.key} bucket={msg.bucket} reason={msg.reason}");
 
-        if (topTappersText != null)
+        if (top7WinnersText != null)
         {
-            topTappersText.text = BuildTopTappersText(msg);
+            top7WinnersText.text = BuildTopWinnersText(msg);
+        }
+
+        if (top3LosersText != null)
+        {
+            top3LosersText.text = BuildTopLosersText(msg);
         }
 
         if (msg?.topGtr != null && msg.topGtr.Length > 0)
@@ -566,17 +572,54 @@ public class Initializer : MonoBehaviour
         }
     }
 
-    private string BuildTopTappersText(BackendConnector.TowRecordSavedMsg msg)
+    private string BuildTopWinnersText(BackendConnector.TowRecordSavedMsg msg)
     {
+        BuildSplitTopLists(msg, out var winners, out _);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("TOP 7 WINNERS");
+
+        int winnerCount = Math.Min(7, winners.Count);
+        for (int i = 0; i < winnerCount; i++)
+        {
+            var row = winners[i];
+            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private string BuildTopLosersText(BackendConnector.TowRecordSavedMsg msg)
+    {
+        BuildSplitTopLists(msg, out _, out var losers);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("TOP 3 LOSERS");
+
+        int loserCount = Math.Min(3, losers.Count);
+        for (int i = 0; i < loserCount; i++)
+        {
+            var row = losers[i];
+            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private void BuildSplitTopLists(
+        BackendConnector.TowRecordSavedMsg msg,
+        out List<BackendConnector.TowTopTapper> winners,
+        out List<BackendConnector.TowTopTapper> losers)
+    {
+        winners = new List<BackendConnector.TowTopTapper>();
+        losers = new List<BackendConnector.TowTopTapper>();
+
         if (msg?.topByTtr == null || msg.topByTtr.Length == 0)
-            return "";
+            return;
 
         int winningTeamIndex = -1;
         if (string.Equals(msg.winningTeam, "Team A", StringComparison.OrdinalIgnoreCase)) winningTeamIndex = 0;
         else if (string.Equals(msg.winningTeam, "Team B", StringComparison.OrdinalIgnoreCase)) winningTeamIndex = 1;
-
-        var winners = new List<BackendConnector.TowTopTapper>();
-        var losers = new List<BackendConnector.TowTopTapper>();
 
         for (int i = 0; i < msg.topByTtr.Length; i++)
         {
@@ -608,27 +651,6 @@ public class Initializer : MonoBehaviour
             if (a.ttr != b.ttr) return a.ttr.CompareTo(b.ttr);
             return string.Compare(a.username, b.username, StringComparison.OrdinalIgnoreCase);
         });
-
-        var sb = new StringBuilder();
-        sb.AppendLine("TOP TAPPERS");
-        sb.AppendLine("Winners");
-
-        int winnerCount = Math.Min(7, winners.Count);
-        for (int i = 0; i < winnerCount; i++)
-        {
-            var row = winners[i];
-            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
-        }
-
-        sb.AppendLine("Losers");
-        int loserCount = Math.Min(3, losers.Count);
-        for (int i = 0; i < loserCount; i++)
-        {
-            var row = losers[i];
-            sb.AppendLine($"{i + 1}. {row.username}  (TTR {row.ttr})");
-        }
-
-        return sb.ToString().TrimEnd();
     }
 
     private void HandleTowPaused(BackendConnector.TowPausedMsg msg)

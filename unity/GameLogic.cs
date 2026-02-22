@@ -86,6 +86,15 @@ public class GameLogic : MonoBehaviour
     [Tooltip("Clamp marker velocity magnitude.")]
     [SerializeField] private float maxVelocity = 3.0f;
 
+    [Tooltip("Smoothing for render movement while rope is being pulled.")]
+    [SerializeField] private float markerPullSmoothTime = 0.05f;
+
+    [Tooltip("How long to use auto-center smoothing after each round reset.")]
+    [SerializeField] private float autoCenterBlendDuration = 0.2f;
+
+    [Tooltip("Smoothing while marker auto-centers between rounds.")]
+    [SerializeField] private float autoCenterSmoothTime = 0.12f;
+
     [Header("Between Rounds")]
     [Tooltip("Seconds shown on the shared countdown before each round starts.")]
     [SerializeField] private int bufferCountdownSeconds = 3;
@@ -126,6 +135,9 @@ public class GameLogic : MonoBehaviour
     private float _startX = 0f;
     private float _markerX = 0f;
     private float _markerV = 0f;
+    private float _markerRenderX = 0f;
+    private float _markerRenderVelocity = 0f;
+    private float _autoCenterBlendEndsAt = 0f;
 
     // tap accumulation (per fixed step)
     private int _pendingTapsA = 0;
@@ -142,6 +154,7 @@ public class GameLogic : MonoBehaviour
         if (initializer == null) initializer = GetComponent<Initializer>();
         if (markerTransform != null) _startX = markerTransform.position.x;
         _markerX = _startX;
+        _markerRenderX = _startX;
 
         HideRoundEndObjects();
     }
@@ -297,6 +310,8 @@ public class GameLogic : MonoBehaviour
 
     private void Update()
     {
+        UpdateMarkerVisual();
+
         if (_phase == Phase.Buffer)
         {
             if (Time.time >= _bufferEndsAt)
@@ -373,14 +388,6 @@ public class GameLogic : MonoBehaviour
 
         _markerX = Mathf.Clamp(_markerX, Mathf.Min(leftX, rightX), Mathf.Max(leftX, rightX));
 
-        // Apply to transform
-        if (markerTransform)
-        {
-            Vector3 p = markerTransform.position;
-            p.x = _markerX;
-            markerTransform.position = p;
-        }
-
         // Check win condition
         CheckGoalHit(leftX, rightX);
     }
@@ -419,9 +426,22 @@ public class GameLogic : MonoBehaviour
 
         _markerX = center;
         _markerV = 0f;
+        _markerRenderVelocity = 0f;
+        _autoCenterBlendEndsAt = Time.time + Mathf.Max(0f, autoCenterBlendDuration);
+    }
+
+    private void UpdateMarkerVisual()
+    {
+        if (!markerTransform) return;
+
+        float smoothTime = Time.time < _autoCenterBlendEndsAt
+            ? Mathf.Max(0.0001f, autoCenterSmoothTime)
+            : Mathf.Max(0.0001f, markerPullSmoothTime);
+
+        _markerRenderX = Mathf.SmoothDamp(_markerRenderX, _markerX, ref _markerRenderVelocity, smoothTime, Mathf.Infinity, Time.deltaTime);
 
         Vector3 p = markerTransform.position;
-        p.x = center;
+        p.x = _markerRenderX;
         markerTransform.position = p;
     }
 
@@ -646,7 +666,7 @@ public class GameLogic : MonoBehaviour
 
     private float _markerTransformSafeX()
     {
-        if (markerTransform) return markerTransform.position.x;
+        if (markerTransform) return _markerRenderX;
         return _markerX;
     }
 }
