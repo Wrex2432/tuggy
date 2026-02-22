@@ -83,6 +83,9 @@ public class Initializer : MonoBehaviour
     [SerializeField] private Text codeText;
     [SerializeField] private Text hintText;
 
+    [Header("Optional Start UI")]
+    [SerializeField] private Button startGameButton;
+
     [Header("Optional Buffer Countdown (TMP)")]
     [SerializeField] private TMP_Text countdownText;
     [SerializeField] private bool showGoMessage = true;
@@ -173,10 +176,31 @@ public class Initializer : MonoBehaviour
         }
 
         HideCountdown();
+        SyncStartButtonState();
+        if (startGameButton != null)
+        {
+            startGameButton.onClick.RemoveListener(OnStartButtonClicked);
+            startGameButton.onClick.AddListener(OnStartButtonClicked);
+        }
 
         // Let backend read URL from cfg by default
         backend.SetServerUrl(_cfg.backendWsUrl);
         backend.Connect();
+    }
+
+    private void OnDestroy()
+    {
+        if (startGameButton != null)
+            startGameButton.onClick.RemoveListener(OnStartButtonClicked);
+    }
+
+    public void OnStartButtonClicked()
+    {
+        if (_state != BootState.Lobby) return;
+
+        _manualStartRequested = true;
+        BeginBufferCountdown();
+        SyncStartButtonState();
     }
 
     private void Update()
@@ -554,6 +578,7 @@ public class Initializer : MonoBehaviour
     private void SetState(BootState s)
     {
         _state = s;
+        SyncStartButtonState();
     }
 
     private void Fail(string reason)
@@ -576,6 +601,12 @@ public class Initializer : MonoBehaviour
     {
         if (countdownText)
             countdownText.gameObject.SetActive(false);
+    }
+
+    private void SyncStartButtonState()
+    {
+        if (!startGameButton) return;
+        startGameButton.interactable = _state == BootState.Lobby;
     }
 
     private void UpdateLobbyUI()
