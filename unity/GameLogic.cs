@@ -53,12 +53,6 @@ public class GameLogic : MonoBehaviour
         public int lobbyDurationSeconds = 20;
         public string allowManualStartKey = "n";
 
-        public int bufferCountdownSeconds = 3;
-
-        // Per-round timer. If time runs out before a goal hit,
-        // round winner is decided by total taps in that round.
-        public int roundDurationSeconds = 230;
-
         public int totalRounds = 3; // best-of (odd recommended)
 
         public float tapStrengthMultiplier = 1.0f;
@@ -92,9 +86,29 @@ public class GameLogic : MonoBehaviour
     [Tooltip("Clamp marker velocity magnitude.")]
     [SerializeField] private float maxVelocity = 3.0f;
 
+    [Tooltip("Smoothing for render movement while rope is being pulled.")]
+    [SerializeField] private float markerPullSmoothTime = 0.05f;
+
+    [Tooltip("How long to use auto-center smoothing after each round reset.")]
+    [SerializeField] private float autoCenterBlendDuration = 0.2f;
+
+    [Tooltip("Smoothing while marker auto-centers between rounds.")]
+    [SerializeField] private float autoCenterSmoothTime = 0.12f;
+
     [Header("Between Rounds")]
-    [Tooltip("Seconds to wait between rounds (visual reset buffer). Uses control.json bufferCountdownSeconds if > 0.")]
-    [SerializeField] private int betweenRoundBufferSecondsOverride = -1;
+    [Tooltip("Seconds shown on the shared countdown before each round starts.")]
+    [SerializeField] private int bufferCountdownSeconds = 3;
+
+    [Tooltip("Seconds each round runs before timeout decides winner by taps.")]
+    [SerializeField] private int roundDurationSeconds = 230;
+
+    [Tooltip("How long the round winner object is shown before next-round countdown begins.")]
+    [SerializeField] private float roundEndDisplaySeconds = 3f;
+
+    [SerializeField] private GameObject teamARoundEndObject;
+    [SerializeField] private GameObject teamBRoundEndObject;
+
+    [SerializeField] private Initializer initializer;
 
     [Header("Optional UI")]
     [SerializeField] private Text phaseText;
@@ -114,11 +128,16 @@ public class GameLogic : MonoBehaviour
 
     private float _bufferEndsAt = 0f;
     private float _roundEndsAt = 0f;
+    private float _roundEndDisplayEndsAt = 0f;
+    private bool _roundEndDisplayActive = false;
 
     // marker motion
     private float _startX = 0f;
     private float _markerX = 0f;
     private float _markerV = 0f;
+    private float _markerRenderX = 0f;
+    private float _markerRenderVelocity = 0f;
+    private float _autoCenterBlendEndsAt = 0f;
 
     // tap accumulation (per fixed step)
     private int _pendingTapsA = 0;
@@ -132,8 +151,12 @@ public class GameLogic : MonoBehaviour
 
     private void Awake()
     {
+        if (initializer == null) initializer = GetComponent<Initializer>();
         if (markerTransform != null) _startX = markerTransform.position.x;
         _markerX = _startX;
+        _markerRenderX = _startX;
+
+        HideRoundEndObjects();
     }
 
     private void Start()
@@ -158,8 +181,6 @@ public class GameLogic : MonoBehaviour
             roomCodeLength = cfgFromInitializer.roomCodeLength,
             lobbyDurationSeconds = cfgFromInitializer.lobbyDurationSeconds,
             allowManualStartKey = cfgFromInitializer.allowManualStartKey,
-            bufferCountdownSeconds = cfgFromInitializer.bufferCountdownSeconds,
-            roundDurationSeconds = cfgFromInitializer.roundDurationSeconds,
             totalRounds = cfgFromInitializer.totalRounds,
             tapStrengthMultiplier = cfgFromInitializer.tapStrengthMultiplier,
             allowLateJoin = cfgFromInitializer.allowLateJoin,
@@ -188,6 +209,11 @@ public class GameLogic : MonoBehaviour
         _roomCode = roomCode ?? _roomCode;
         // Start Round 1
         BeginRoundActive();
+    }
+
+    public int GetBufferCountdownSeconds()
+    {
+        return Mathf.Max(0, bufferCountdownSeconds);
     }
 
     /* ============================
@@ -284,6 +310,8 @@ public class GameLogic : MonoBehaviour
 
     private void Update()
     {
+        UpdateMarkerVisual();
+
         if (_phase == Phase.Buffer)
         {
             if (Time.time >= _bufferEndsAt)
@@ -296,8 +324,23 @@ public class GameLogic : MonoBehaviour
 
         if (_phase == Phase.RoundIntermission)
         {
+            if (_roundEndDisplayActive)
+            {
+                if (Time.time >= _roundEndDisplayEndsAt)
+                {
+                    _roundEndDisplayActive = false;
+                    HideRoundEndObjects();
+                    StartBetweenRoundCountdown();
+                }
+
+                UpdateUI();
+                return;
+            }
+
+            ShowSharedCountdown();
             if (Time.time >= _bufferEndsAt)
             {
+                HideSharedCountdown();
                 BeginRoundActive();
             }
             UpdateUI();
@@ -345,14 +388,6 @@ public class GameLogic : MonoBehaviour
 
         _markerX = Mathf.Clamp(_markerX, Mathf.Min(leftX, rightX), Mathf.Max(leftX, rightX));
 
-        // Apply to transform
-        if (markerTransform)
-        {
-            Vector3 p = markerTransform.position;
-            p.x = _markerX;
-            markerTransform.position = p;
-        }
-
         // Check win condition
         CheckGoalHit(leftX, rightX);
     }
@@ -391,9 +426,22 @@ public class GameLogic : MonoBehaviour
 
         _markerX = center;
         _markerV = 0f;
+        _markerRenderVelocity = 0f;
+        _autoCenterBlendEndsAt = Time.time + Mathf.Max(0f, autoCenterBlendDuration);
+    }
+
+    private void UpdateMarkerVisual()
+    {
+        if (!markerTransform) return;
+
+        float smoothTime = Time.time < _autoCenterBlendEndsAt
+            ? Mathf.Max(0.0001f, autoCenterSmoothTime)
+            : Mathf.Max(0.0001f, markerPullSmoothTime);
+
+        _markerRenderX = Mathf.SmoothDamp(_markerRenderX, _markerX, ref _markerRenderVelocity, smoothTime, Mathf.Infinity, Time.deltaTime);
 
         Vector3 p = markerTransform.position;
-        p.x = center;
+        p.x = _markerRenderX;
         markerTransform.position = p;
     }
 
@@ -414,8 +462,10 @@ public class GameLogic : MonoBehaviour
         _pendingTapsB = 0;
         _roundTapA = 0;
         _roundTapB = 0;
+        HideRoundEndObjects();
+        HideSharedCountdown();
 
-        int roundSeconds = (_cfg != null) ? Mathf.Max(1, _cfg.roundDurationSeconds) : 230;
+        int roundSeconds = Mathf.Max(1, roundDurationSeconds);
         _roundEndsAt = Time.time + roundSeconds;
 
         SetPhase(Phase.RoundActive);
@@ -481,25 +531,57 @@ public class GameLogic : MonoBehaviour
         // Advance round
         _roundIndex++;
 
-        // Intermission or end
+        SetPhase(Phase.RoundIntermission);
+        ShowRoundEndObject(winnerTeamIndex);
+        _roundEndDisplayActive = true;
+        _roundEndDisplayEndsAt = Time.time + Mathf.Max(0f, roundEndDisplaySeconds);
+
+        UpdateUI();
+    }
+
+    private void StartBetweenRoundCountdown()
+    {
         if (IsMatchOver())
         {
             EndMatch();
             return;
         }
 
-        // Between-round buffer (visual reset)
-        int between = betweenRoundBufferSecondsOverride >= 0
-            ? betweenRoundBufferSecondsOverride
-            : ((_cfg != null) ? _cfg.bufferCountdownSeconds : 3);
+        int between = Mathf.Max(0, bufferCountdownSeconds);
 
-        // NEW: tell web apps a new round is starting, with buffer countdown
         SendRoundStarting(between, _roundIndex);
 
-        SetPhase(Phase.RoundIntermission);
-        _bufferEndsAt = Time.time + Mathf.Max(0, between);
+        _bufferEndsAt = Time.time + between;
+        ShowSharedCountdown();
+    }
 
-        UpdateUI();
+    private void ShowRoundEndObject(int winnerTeamIndex)
+    {
+        HideRoundEndObjects();
+
+        if (winnerTeamIndex == 0 && teamARoundEndObject != null)
+            teamARoundEndObject.SetActive(true);
+        else if (winnerTeamIndex == 1 && teamBRoundEndObject != null)
+            teamBRoundEndObject.SetActive(true);
+    }
+
+    private void HideRoundEndObjects()
+    {
+        if (teamARoundEndObject != null) teamARoundEndObject.SetActive(false);
+        if (teamBRoundEndObject != null) teamBRoundEndObject.SetActive(false);
+    }
+
+    private void ShowSharedCountdown()
+    {
+        if (initializer == null) return;
+        int remaining = Mathf.CeilToInt(Mathf.Max(0f, _bufferEndsAt - Time.time));
+        initializer.ShowExternalCountdown(Mathf.Max(0, remaining).ToString());
+    }
+
+    private void HideSharedCountdown()
+    {
+        if (initializer == null) return;
+        initializer.HideExternalCountdown();
     }
 
     private bool IsMatchOver()
@@ -584,7 +666,7 @@ public class GameLogic : MonoBehaviour
 
     private float _markerTransformSafeX()
     {
-        if (markerTransform) return markerTransform.position.x;
+        if (markerTransform) return _markerRenderX;
         return _markerX;
     }
 }
