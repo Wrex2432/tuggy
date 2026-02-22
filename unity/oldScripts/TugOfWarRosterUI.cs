@@ -1,158 +1,243 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
 
 /// <summary>
-///   • Lists rosters for Team A / Team B
-///   • Counts each player’s pulls
-///   • Displays “Top Player” for both teams
-///   • Stops counting when either of two trigger objects becomes active
-///   • Activates a results panel at that same moment
+/// Legacy roster UI adapted for the current backend message model.
+///
+/// Supports both:
+/// - Old calls: AddPlayer(username, team) / RegisterPull(username, team)
+/// - New calls: OnPlayerJoined(uid, username, teamIndex) / OnTap(...)
 /// </summary>
 public class TugOfWarRosterUI : MonoBehaviour
 {
+    [Serializable]
+    private class RosterEntry
+    {
+        public string uid;
+        public string username;
+        public int pulls;
+    }
+
     [Header("Roster Text Objects")]
-    [SerializeField] TMP_Text rosterAText;
-    [SerializeField] TMP_Text rosterBText;
+    [SerializeField] private TMP_Text rosterAText;
+    [SerializeField] private TMP_Text rosterBText;
 
     [Header("Top-Player Text Objects")]
-    [SerializeField] TMP_Text topAText;
-    [SerializeField] TMP_Text topBText;
+    [SerializeField] private TMP_Text topAText;
+    [SerializeField] private TMP_Text topBText;
 
     [Header("Stop Counting When ANY of These Is Active")]
-    [SerializeField] GameObject stopTrigger1;   // e.g. WinBannerA
-    [SerializeField] GameObject stopTrigger2;   // e.g. WinBannerB
+    [SerializeField] private GameObject stopTrigger1;
+    [SerializeField] private GameObject stopTrigger2;
 
     [Header("Enable This GO When Counting Stops")]
-    [SerializeField] GameObject enableOnStop;   // e.g. ResultsPanel
+    [SerializeField] private GameObject enableOnStop;
 
-    /* ───────────────────────────────────────────────────────────── */
+    private readonly Dictionary<string, RosterEntry> _teamA = new();
+    private readonly Dictionary<string, RosterEntry> _teamB = new();
 
-    readonly List<string> teamAPlayers = new();
-    readonly List<string> teamBPlayers = new();
-    readonly Dictionary<string, int> teamAPulls = new();
-    readonly Dictionary<string, int> teamBPulls = new();
-
-    bool countingStopped = false;
+    private bool countingStopped;
 
     public static TugOfWarRosterUI Instance { get; private set; }
 
-    void Awake()
+    private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         Instance = this;
+        RefreshAll();
     }
 
-    /* ─────────────────────────────  JOIN  ───────────────────────────── */
+    // ---------- New system API ----------
 
-    public void AddPlayer(string username, string team)
+    public void OnPlayerJoined(string uid, string username, int teamIndex)
     {
-        if (string.IsNullOrWhiteSpace(username)) return;
+        if (string.IsNullOrWhiteSpace(uid)) return;
 
-        if (IsTeamB(team))
+        Dictionary<string, RosterEntry> own = TeamMap(teamIndex);
+        Dictionary<string, RosterEntry> other = teamIndex == 1 ? _teamA : _teamB;
+
+        // Ensure uid is only in one team dictionary.
+        other.Remove(uid);
+
+        if (!own.TryGetValue(uid, out var entry))
         {
-            if (teamBPlayers.Contains(username)) return;
-            teamBPlayers.Add(username);
-            teamBPulls.TryAdd(username, 0);
-            RefreshRoster(rosterBText, teamBPlayers);
+            own[uid] = new RosterEntry
+            {
+                uid = uid,
+                username = SafeName(username),
+                pulls = 0
+            };
         }
         else
         {
-            if (teamAPlayers.Contains(username)) return;
-            teamAPlayers.Add(username);
-            teamAPulls.TryAdd(username, 0);
-            RefreshRoster(rosterAText, teamAPlayers);
+            entry.username = SafeName(username);
         }
 
-        Debug.Log($"[RosterUI] Added {username} to {(IsTeamB(team) ? "B" : "A")}");
+        RefreshAll();
     }
 
-    /* ───────────────────────  PULL  (increment-first) ─────────────────────── */
-
-    public void RegisterPull(string username, string team)
+    public void OnPlayerResumed(string uid, string username, int teamIndex)
     {
-        if (countingStopped) return;   // already frozen
+        OnPlayerJoined(uid, username, teamIndex);
+    }
 
-        /* 1️⃣  increment */
-        var dict = IsTeamB(team) ? teamBPulls : teamAPulls;
-        if (!dict.ContainsKey(username)) dict[username] = 0;
-        dict[username]++;
+    public void OnTap(string uid, string username, int teamIndex, int count)
+    {
+        if (countingStopped) return;
+        if (string.IsNullOrWhiteSpace(uid)) return;
 
-        /* 2️⃣  update label */
-        UpdateTopPlayer(dict, IsTeamB(team) ? topBText : topAText);
+        Dictionary<string, RosterEntry> own = TeamMap(teamIndex);
+        if (!own.TryGetValue(uid, out var entry))
+        {
+            entry = new RosterEntry
+            {
+                uid = uid,
+                username = SafeName(username),
+                pulls = 0
+            };
+            own[uid] = entry;
+        }
 
-        Debug.Log($"[RosterUI] Pull by {username}  newTotal={dict[username]}");
+        entry.username = SafeName(username);
+        entry.pulls += Mathf.Max(1, count);
 
-        /* 3️⃣  then check for victory banners */
+        RefreshTopLabels();
+
         if (StopTriggered())
             StopCounting();
     }
 
-    /* ────────────────────────────  FRAME CHECK  ──────────────────────────── */
+    public void ApplyBackendPhase(string phase)
+    {
+        if (string.IsNullOrWhiteSpace(phase)) return;
 
-    void Update()
+        string normalized = phase.Trim().ToLowerInvariant();
+
+        if (normalized == "join")
+        {
+            ResetAll();
+        }
+        else if (normalized == "ended")
+        {
+            StopCounting();
+        }
+    }
+
+    // ---------- Legacy compatibility API ----------
+
+    public void AddPlayer(string username, string team)
+    {
+        // Legacy flow has no uid, so derive a stable local key from team + name.
+        string key = $"legacy:{(IsTeamB(team) ? 1 : 0)}:{SafeName(username).ToLowerInvariant()}";
+        OnPlayerJoined(key, username, IsTeamB(team) ? 1 : 0);
+    }
+
+    public void RegisterPull(string username, string team)
+    {
+        string key = $"legacy:{(IsTeamB(team) ? 1 : 0)}:{SafeName(username).ToLowerInvariant()}";
+        OnTap(key, username, IsTeamB(team) ? 1 : 0, 1);
+    }
+
+    private void Update()
     {
         if (!countingStopped && StopTriggered())
             StopCounting();
     }
 
-    /* ────────────────────────────  RESET  ──────────────────────────── */
-
     public void ResetAll()
     {
         countingStopped = false;
 
-        teamAPlayers.Clear(); teamBPlayers.Clear();
-        teamAPulls.Clear(); teamBPulls.Clear();
+        _teamA.Clear();
+        _teamB.Clear();
 
-        RefreshRoster(rosterAText, teamAPlayers);
-        RefreshRoster(rosterBText, teamBPlayers);
-
-        if (topAText) topAText.text = "-";
-        if (topBText) topBText.text = "-";
+        RefreshAll();
 
         if (enableOnStop) enableOnStop.SetActive(false);
-
-        Debug.Log("[RosterUI] Reset");
     }
 
-    /* ───────────────────────────  HELPERS  ─────────────────────────── */
+    private bool StopTriggered()
+    {
+        return (stopTrigger1 && stopTrigger1.activeInHierarchy) ||
+               (stopTrigger2 && stopTrigger2.activeInHierarchy);
+    }
 
-    bool StopTriggered() =>
-        (stopTrigger1 && stopTrigger1.activeInHierarchy) ||
-        (stopTrigger2 && stopTrigger2.activeInHierarchy);
-
-    void StopCounting()
+    private void StopCounting()
     {
         countingStopped = true;
-
-        // final refresh ensures latest totals are shown
-        UpdateTopPlayer(teamAPulls, topAText);
-        UpdateTopPlayer(teamBPulls, topBText);
+        RefreshTopLabels();
 
         if (enableOnStop) enableOnStop.SetActive(true);
-
-        Debug.Log("[RosterUI] Counting stopped & results panel enabled");
     }
 
-    static bool IsTeamB(string team) =>
-        !string.IsNullOrEmpty(team) &&
-        (team.Equals("B", System.StringComparison.OrdinalIgnoreCase) ||
-         team.Equals("TeamB", System.StringComparison.OrdinalIgnoreCase));
-
-    static void RefreshRoster(TMP_Text field, List<string> list)
+    private void RefreshAll()
     {
-        if (field) field.text = string.Join("\n", list);
+        RefreshRoster(rosterAText, _teamA.Values.Select(v => v.username));
+        RefreshRoster(rosterBText, _teamB.Values.Select(v => v.username));
+        RefreshTopLabels();
     }
 
-    static void UpdateTopPlayer(Dictionary<string, int> pulls, TMP_Text field)
+    private void RefreshTopLabels()
+    {
+        UpdateTopPlayer(_teamA, topAText);
+        UpdateTopPlayer(_teamB, topBText);
+    }
+
+    private static Dictionary<string, RosterEntry> TeamMapByIndex(
+        int teamIndex,
+        Dictionary<string, RosterEntry> teamA,
+        Dictionary<string, RosterEntry> teamB)
+    {
+        return teamIndex == 1 ? teamB : teamA;
+    }
+
+    private Dictionary<string, RosterEntry> TeamMap(int teamIndex)
+    {
+        return TeamMapByIndex(teamIndex, _teamA, _teamB);
+    }
+
+    private static bool IsTeamB(string team)
+    {
+        return !string.IsNullOrWhiteSpace(team) &&
+               (team.Equals("B", StringComparison.OrdinalIgnoreCase) ||
+                team.Equals("TeamB", StringComparison.OrdinalIgnoreCase) ||
+                team.Equals("1", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string SafeName(string username)
+    {
+        string trimmed = (username ?? string.Empty).Trim();
+        return string.IsNullOrEmpty(trimmed) ? "Unknown" : trimmed;
+    }
+
+    private static void RefreshRoster(TMP_Text field, IEnumerable<string> names)
+    {
+        if (field) field.text = string.Join("\n", names);
+    }
+
+    private static void UpdateTopPlayer(Dictionary<string, RosterEntry> pulls, TMP_Text field)
     {
         if (!field) return;
 
-        if (pulls.Count == 0) { field.text = "-"; return; }
+        if (pulls.Count == 0)
+        {
+            field.text = "-";
+            return;
+        }
 
-        var top = pulls.Aggregate((a, b) => a.Value >= b.Value ? a : b);
-        field.text = $"{top.Key} ({top.Value})";
+        var top = pulls.Values
+            .OrderByDescending(p => p.pulls)
+            .ThenBy(p => p.username, StringComparer.OrdinalIgnoreCase)
+            .First();
+
+        field.text = $"{top.username} ({top.pulls})";
     }
 }
