@@ -373,7 +373,39 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
     })
     .slice(0, 10);
 
+  const winnerTopByTtr = list
+    .filter((p) => p.teamIndex === st.winningTeamIndex)
+    .map((p) => ({
+      username: p.name,
+      ttr: ttrByNameKey[p.nameKey] ?? 0,
+      teamIndex: p.teamIndex,
+      state: "winner",
+    }))
+    .sort((a, b) => {
+      if (a.ttr !== b.ttr) return a.ttr - b.ttr;
+      return String(a.username).localeCompare(String(b.username));
+    })
+    .slice(0, 7);
+
+  const loserTeamIndex = st.winningTeamIndex === 0 ? 1 : st.winningTeamIndex === 1 ? 0 : null;
+  const loserTopByTtr = list
+    .filter((p) => p.teamIndex === loserTeamIndex)
+    .map((p) => ({
+      username: p.name,
+      ttr: ttrByNameKey[p.nameKey] ?? 0,
+      teamIndex: p.teamIndex,
+      state: "loser",
+    }))
+    .sort((a, b) => {
+      if (a.ttr !== b.ttr) return a.ttr - b.ttr;
+      return String(a.username).localeCompare(String(b.username));
+    })
+    .slice(0, 3);
+
+  const topByTtr = [...winnerTopByTtr, ...loserTopByTtr];
+
   console.log(`[truckofwar] Top 10 tappers for ${session.code}:`, topGtr);
+  console.log(`[truckofwar] Winner/Loser TTR leaderboard for ${session.code}:`, topByTtr);
 
   // Cache results by nameKey (stable for resume)
   for (const meta of Object.values(st.playerMetaByUid)) {
@@ -428,6 +460,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
     endedReason: reason || null,
     winningTeam,
     topGtr,
+    topByTtr,
   });
 }
 
