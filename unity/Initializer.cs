@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -82,6 +83,14 @@ public class Initializer : MonoBehaviour
     [SerializeField] private Text codeText;
     [SerializeField] private Text hintText;
 
+    [Header("Optional Start UI")]
+    [SerializeField] private Button startGameButton;
+
+    [Header("Optional Buffer Countdown (TMP)")]
+    [SerializeField] private TMP_Text countdownText;
+    [SerializeField] private bool showGoMessage = true;
+    [SerializeField] private float goMessageDuration = 0.5f;
+
     [Header("Control.json")]
     [Tooltip("Filename only. Will search Project Root first, then StreamingAssets, then Assets (Editor fallback).")]
     [SerializeField] private string controlJsonFileName = "control.json";
@@ -91,6 +100,8 @@ public class Initializer : MonoBehaviour
     private string _roomCode = "";
     private float _lobbyEndsAt = 0f;
     private float _bufferEndsAt = 0f;
+    private float _bufferGoEndsAt = 0f;
+    private bool _bufferShowingGo = false;
     private bool _manualStartRequested = false;
 
     private void Awake()
@@ -164,9 +175,32 @@ public class Initializer : MonoBehaviour
             return;
         }
 
+        HideCountdown();
+        SyncStartButtonState();
+        if (startGameButton != null)
+        {
+            startGameButton.onClick.RemoveListener(OnStartButtonClicked);
+            startGameButton.onClick.AddListener(OnStartButtonClicked);
+        }
+
         // Let backend read URL from cfg by default
         backend.SetServerUrl(_cfg.backendWsUrl);
         backend.Connect();
+    }
+
+    private void OnDestroy()
+    {
+        if (startGameButton != null)
+            startGameButton.onClick.RemoveListener(OnStartButtonClicked);
+    }
+
+    public void OnStartButtonClicked()
+    {
+        if (_state != BootState.Lobby) return;
+
+        _manualStartRequested = true;
+        BeginBufferCountdown();
+        SyncStartButtonState();
     }
 
     private void Update()
@@ -205,9 +239,31 @@ public class Initializer : MonoBehaviour
                 "Get ready…"
             );
 
+            if (!_bufferShowingGo)
+            {
+                ShowCountdown(Mathf.CeilToInt(remaining).ToString());
+            }
+
             if (Time.time >= _bufferEndsAt)
             {
-                BeginGame();
+                if (showGoMessage)
+                {
+                    if (!_bufferShowingGo)
+                    {
+                        _bufferShowingGo = true;
+                        _bufferGoEndsAt = Time.time + Mathf.Max(0f, goMessageDuration);
+                        ShowCountdown("GO!");
+                    }
+
+                    if (Time.time >= _bufferGoEndsAt)
+                    {
+                        BeginGame();
+                    }
+                }
+                else
+                {
+                    BeginGame();
+                }
             }
         }
     }
@@ -409,6 +465,9 @@ public class Initializer : MonoBehaviour
 
         int secs = Mathf.Max(0, _cfg.bufferCountdownSeconds);
         _bufferEndsAt = Time.time + secs;
+        _bufferGoEndsAt = 0f;
+        _bufferShowingGo = false;
+        ShowCountdown(Mathf.Max(1, secs).ToString());
 
         // Keep backend phase=join until BeginGame (taps gated by backend)
         if (gameLogic != null) gameLogic.SetPhaseBuffer(secs);
@@ -420,6 +479,7 @@ public class Initializer : MonoBehaviour
     private void BeginGame()
     {
         SetState(BootState.InGame);
+        HideCountdown();
 
         // Tell backend taps are now valid
         backend.SendUnityPhase(_roomCode, "active");
@@ -518,13 +578,35 @@ public class Initializer : MonoBehaviour
     private void SetState(BootState s)
     {
         _state = s;
+        SyncStartButtonState();
     }
 
     private void Fail(string reason)
     {
         SetState(BootState.Error);
+        HideCountdown();
         Debug.LogError("[Initializer] " + reason);
         UpdateStatus("ERROR", "", reason);
+    }
+
+    private void ShowCountdown(string message)
+    {
+        if (!countdownText) return;
+        if (!countdownText.gameObject.activeSelf)
+            countdownText.gameObject.SetActive(true);
+        countdownText.text = message;
+    }
+
+    private void HideCountdown()
+    {
+        if (countdownText)
+            countdownText.gameObject.SetActive(false);
+    }
+
+    private void SyncStartButtonState()
+    {
+        if (!startGameButton) return;
+        startGameButton.interactable = _state == BootState.Lobby;
     }
 
     private void UpdateLobbyUI()
