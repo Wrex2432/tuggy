@@ -216,6 +216,7 @@ function computeRanks(st, winningTeamIndex) {
   const list = Object.values(st.playerMetaByUid || {}).map((meta) => ({
     uid: meta.uid,
     name: meta.name,
+    fullName: meta.fullName || "",
     nameKey: meta.nameKey,
     taps: meta.taps || 0,
     teamIndex: meta.teamIndex,
@@ -319,6 +320,7 @@ function buildS3Json(session) {
   for (const p of list) {
     const record = {
       uid: p.uid,
+      fullName: p.fullName || "",
       taps: p.taps,
       team: p.teamIndex === 0 ? "Team A" : "Team B",
       ttr: ttrByNameKey[p.nameKey] ?? null,
@@ -425,6 +427,7 @@ async function finalizeGameAndRecord(session, { reason, winnerTeamIndex }) {
 
   for (const p of Object.values(session.players || {})) {
     const uname = normName(p.username);
+    const full = normName(p.fullName);
     const nk = nameKey(uname);
     const result = st.finalResultsByNameKey[nk];
     if (!result) continue;
@@ -552,6 +555,7 @@ module.exports = {
         uid: stableUid,
         name: uname,
         nameKey: nk,
+        fullName: full,
         teamIndex,
         taps: 0,
         firstSeenAt: nowIso(),
@@ -562,6 +566,7 @@ module.exports = {
       meta.uid = stableUid;
       meta.name = uname;
       meta.nameKey = nk;
+      meta.fullName = full || meta.fullName || "";
       meta.teamIndex = teamIndex;
       if (!meta.joinedAt) meta.joinedAt = nowIso();
     }
@@ -617,6 +622,7 @@ module.exports = {
     if (!p) return;
 
     const uname = normName(entry?.username || p.username);
+    const full = normName(p.fullName || entry?.fullName);
     const nk = nameKey(uname);
     const stableUid = getStableUid(session, clientId);
 
@@ -667,6 +673,7 @@ module.exports = {
         uid: stableUid,
         name: uname,
         nameKey: nk,
+        fullName: full,
         teamIndex,
         taps: 0,
         firstSeenAt: nowIso(),
@@ -676,6 +683,7 @@ module.exports = {
       meta.uid = stableUid;
       meta.name = uname;
       meta.nameKey = nk;
+      meta.fullName = full || meta.fullName || "";
       meta.teamIndex = teamIndex;
       if (!meta.joinedAt) meta.joinedAt = nowIso();
     }
