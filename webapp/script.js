@@ -34,6 +34,7 @@ const roomCodeEl = $("roomCode");
 const codeLabelEl = $("codeLabel");
 const roomCodeWrapEl = $("roomCodeWrap");
 const usernameEl = $("username");
+const fullNameEl = $("fullName");
 const btnJoin = $("btnJoin");
 
 const btnTap = $("btnTap");
@@ -63,6 +64,7 @@ let teamIndex = null;
 let taps = 0;
 let code = "";
 let username = "";
+let fullName = "";
 let resumeToken = null;
 let canTap = false;
 let tapBuffer = 0;
@@ -246,12 +248,13 @@ function wsSend(obj) {
   return true;
 }
 
-function connectAndJoin({ codeIn, usernameIn }) {
+function connectAndJoin({ codeIn, usernameIn, fullNameIn }) {
   if (isConnecting) return;
   isConnecting = true;
 
   code = normalizeCode(codeIn);
   username = (usernameIn || "").trim();
+  fullName = (fullNameIn || "").trim();
 
   const minLen = Math.min(Math.max(3, CODE_LEN), MAX_CODE_LEN);
   if (!code || code.length < minLen) {
@@ -264,8 +267,13 @@ function connectAndJoin({ codeIn, usernameIn }) {
     showToast("Please enter a username.");
     return;
   }
+  if (!fullName) {
+    isConnecting = false;
+    showToast("Please enter your full name.");
+    return;
+  }
 
-  saveSession({ code, username, clientUid });
+  saveSession({ code, username, fullName, clientUid });
   setLoading(true, "Connecting…", "Please keep this page open.");
   setText(uidHint, `UID: ${clientUid}`);
   setHidden(uidHint, !DEV_MODE);
@@ -279,7 +287,11 @@ function connectAndJoin({ codeIn, usernameIn }) {
     clearTimeout(connectTimeout);
     const saved = loadSavedSession();
     resumeToken = saved && saved.code === code && saved.username === username && saved.resumeToken ? saved.resumeToken : null;
-    wsSend(resumeToken ? { type: "playerResume", code, username, resumeToken } : { type: "playerJoinTow", code, username });
+    wsSend(
+      resumeToken
+        ? { type: "playerResume", code, username, fullName, resumeToken }
+        : { type: "playerJoinTow", code, username, fullName }
+    );
   };
 
   ws.onmessage = (ev) => {
@@ -368,7 +380,7 @@ function connectAndJoin({ codeIn, usernameIn }) {
     if (phase !== "ended" && resumeToken && code && username) {
       setTimeout(() => {
         if (!ws || ws.readyState === 1) return;
-        connectAndJoin({ codeIn: code, usernameIn: username });
+        connectAndJoin({ codeIn: code, usernameIn: username, fullNameIn: fullName });
       }, 600);
     }
   };
@@ -403,12 +415,21 @@ function boot() {
 
   const saved = loadSavedSession();
   if (usernameEl && saved?.username) usernameEl.value = saved.username;
+  if (fullNameEl && saved?.fullName) fullNameEl.value = saved.fullName;
   if (roomCodeEl && !roomCodeEl.value && saved?.code) roomCodeEl.value = normalizeCode(saved.code);
 
   if (roomCodeEl) roomCodeEl.addEventListener("input", () => { roomCodeEl.value = normalizeCode(roomCodeEl.value); });
-  if (btnJoin) btnJoin.addEventListener("click", () => connectAndJoin({ codeIn: roomCodeEl?.value || "", usernameIn: usernameEl?.value || "" }));
+  if (btnJoin) {
+    btnJoin.addEventListener("click", () =>
+      connectAndJoin({
+        codeIn: roomCodeEl?.value || "",
+        usernameIn: usernameEl?.value || "",
+        fullNameIn: fullNameEl?.value || "",
+      })
+    );
+  }
 
-  [roomCodeEl, usernameEl].forEach((el) => {
+  [roomCodeEl, usernameEl, fullNameEl].forEach((el) => {
     if (!el) return;
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
