@@ -508,6 +508,7 @@ module.exports = {
     if (!p) return;
 
     const uname = normName(p.username);
+    const full = normName(p.fullName);
     const nk = nameKey(uname);
     const stableUid = getStableUid(session, clientId);
 
