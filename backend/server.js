@@ -43,6 +43,21 @@ function nowMs() {
   return Date.now();
 }
 
+function jsonResponse(res, bodyObj, code = 200) {
+  res.writeHead(code, {
+    "Content-Type": "application/json",
+    ...CORS_HEADERS,
+  });
+  res.end(JSON.stringify(bodyObj));
+}
+
+function getFacechinkoSession(code) {
+  const cleanCode = lettersOnly(code || "");
+  const session = sessions.get(cleanCode);
+  if (!session || session.gameType !== "facechinko") return null;
+  return session;
+}
+
 // --- state ---
 const sessions = new Map(); // code -> session
 
@@ -50,6 +65,7 @@ const sessions = new Map(); // code -> session
 const adapters = {
   popcorn: require(path.join(__dirname, "games", "popcorn.js")),
   truckofwar: require(path.join(__dirname, "games", "truckofwar.js")), // NEW
+  facechinko: require(path.join(__dirname, "games", "facechinko.js")),
 };
 
 // create server
@@ -117,6 +133,73 @@ const server = http.createServer((req, res) => {
     return res.end(body);
   }
 
+  // --- Facechinko web endpoints ---
+  if (path === "/facechinko/validate" && req.method === "GET") {
+    const code = url.searchParams.get("code") || "";
+    const name = (url.searchParams.get("name") || "").trim();
+    const session = getFacechinkoSession(code);
+
+    if (!session) {
+      return jsonResponse(res, { ok: false, reason: "code_not_found" });
+    }
+    if (!name) {
+      return jsonResponse(res, { ok: false, reason: "missing_name" });
+    }
+
+    const teams = adapters.facechinko.teamDefinitions.map((t) => ({
+      teamId: t.teamId,
+      name: t.name,
+      color: t.color,
+    }));
+    return jsonResponse(res, { ok: true, code: session.code, name, teams });
+  }
+
+  if (path === "/facechinko/select-team" && req.method === "GET") {
+    const code = url.searchParams.get("code") || "";
+    const uid = (url.searchParams.get("uid") || "").trim();
+    const name = (url.searchParams.get("name") || "").trim();
+    const teamId = parseInt(url.searchParams.get("teamId") || "0", 10);
+    const session = getFacechinkoSession(code);
+
+    if (!session) return jsonResponse(res, { ok: false, reason: "code_not_found" });
+    if (!uid) return jsonResponse(res, { ok: false, reason: "missing_uid" });
+    if (!name) return jsonResponse(res, { ok: false, reason: "missing_name" });
+    const maxTeamId = adapters.facechinko.teamDefinitions.length;
+    if (!Number.isFinite(teamId) || teamId < 1 || teamId > maxTeamId) {
+      return jsonResponse(res, { ok: false, reason: "invalid_team" });
+    }
+
+    const info = adapters.facechinko.registerWebPlayer(session, { uid, name, teamId });
+    if (!info) return jsonResponse(res, { ok: false, reason: "registration_failed" });
+    return jsonResponse(res, { ok: true, player: info });
+  }
+
+  if (path === "/facechinko/player-state" && req.method === "GET") {
+    const code = url.searchParams.get("code") || "";
+    const uid = (url.searchParams.get("uid") || "").trim();
+    const session = getFacechinkoSession(code);
+
+    if (!session) return jsonResponse(res, { ok: false, reason: "code_not_found" });
+    if (!uid) return jsonResponse(res, { ok: false, reason: "missing_uid" });
+
+    const state = adapters.facechinko.getWebPlayerState(session, uid);
+    if (!state) return jsonResponse(res, { ok: false, reason: "player_not_found" });
+
+    const isWinner = Number.isInteger(state.winningTeamId) && state.winningTeamId === state.teamId;
+    return jsonResponse(res, {
+      ok: true,
+      player: state,
+      result:
+        state.phase === "ended"
+          ? {
+              won: isWinner,
+              winningTeamId: state.winningTeamId,
+              mvpName: state.mvpName,
+            }
+          : null,
+    });
+  }
+
   // --- Default response for other paths ---
   res.writeHead(200, {
     "Content-Type": "text/plain; charset=utf-8",
@@ -142,7 +225,7 @@ function endSession(session) {
   try {
     const adapter = adapters[session.gameType];
     if (
-      session.gameType === "truckofwar" &&
+      (session.gameType === "truckofwar" || session.gameType === "facechinko") &&
       adapter &&
       typeof adapter.onSessionEnd === "function"
     ) {
@@ -188,9 +271,7 @@ function maybeScheduleCleanup(session) {
     // If unity is already gone OR ended long enough, end it
     const delta = nowMs() - (still.lastResultAt || 0);
     const unityGone =
-      !still.unity ||
-      !still.unity.ws ||
-      still.unity.ws.readyState !== WebSocket.OPEN;
+      !still.unity || !still.unity.ws || still.unity.ws.readyState !== WebSocket.OPEN;
     if (unityGone || delta >= END_GRACE_MS) {
       endSession(still);
     }
@@ -224,7 +305,7 @@ function scheduleUnityTimeout(session) {
     try {
       const adapter = adapters[current.gameType];
       if (
-        current.gameType === "truckofwar" &&
+        (current.gameType === "truckofwar" || current.gameType === "facechinko") &&
         adapter &&
         typeof adapter.onForcedEnd === "function"
       ) {
@@ -394,12 +475,8 @@ wss.on("connection", (ws) => {
         voucherPool: Array.isArray(voucherPool) ? [...voucherPool] : [],
         teamA_name: teamA_name || "TEAM A",
         teamB_name: teamB_name || "TEAM B",
-        teamA_playerSeat: Array.isArray(teamA_playerSeat)
-          ? [...teamA_playerSeat]
-          : [],
-        teamB_playerSeat: Array.isArray(teamB_playerSeat)
-          ? [...teamB_playerSeat]
-          : [],
+        teamA_playerSeat: Array.isArray(teamA_playerSeat) ? [...teamA_playerSeat] : [],
+        teamB_playerSeat: Array.isArray(teamB_playerSeat) ? [...teamB_playerSeat] : [],
         teamAssignmentMode, // "roundRobin" | "seatPinned"
 
         // store tier range config (as raw values; adapter will parse)
@@ -409,12 +486,12 @@ wss.on("connection", (ws) => {
 
         phase: "join", // "join" | "active" | "ended"
         unity: { ws },
-        players: {}, // clientId -> { ws, username, seat, teamIndex, resumeToken }
+        players: {}, // clientId -> { ws, username, fullName, seat, teamIndex, resumeToken }
         state: null, // adapter-managed
         lastResultAt: null,
 
         // resume index (token -> minimal identity)
-        resumables: {}, // token -> { username, seat, teamIndex }
+        resumables: {}, // token -> { username, fullName, seat, teamIndex }
 
         // Unity disconnect tracking
         unityDisconnectedAt: null,
@@ -459,9 +536,10 @@ wss.on("connection", (ws) => {
 
     // PLAYER JOINS GAME
     if (msg.type === "playerJoin") {
-      const { code, username, seat } = msg;
+      const { code, username, fullName, seat, teamId, uid } = msg;
       const cleanCode = lettersOnly(code || "");
       const uname = (username || "").trim();
+      const full = (fullName || "").trim();
       const seatId = (seat || "").trim().toUpperCase();
 
       const session = sessions.get(cleanCode);
@@ -526,8 +604,17 @@ wss.on("connection", (ws) => {
       session.players[clientId] = {
         ws,
         username: uname,
+        fullName: full,
         seat: seatId,
         teamIndex: null, // will be filled by adapter
+        preferredTeamIndex:
+          session.gameType === "facechinko" && Number.isFinite(parseInt(teamId, 10))
+            ? Math.max(
+                0,
+                Math.min(adapters.facechinko.teamDefinitions.length - 1, parseInt(teamId, 10) - 1)
+              )
+            : null,
+        facechinkoUid: session.gameType === "facechinko" ? (uid || "").trim() : null,
         resumeToken,
       };
 
@@ -538,8 +625,11 @@ wss.on("connection", (ws) => {
       const teamIndex = session.players[clientId].teamIndex;
       session.resumables[resumeToken] = {
         username: uname,
+        fullName: full,
         seat: seatId || null,
         teamIndex: teamIndex,
+        // Facechinko: keep a stable UID across refresh/resume
+        uid: session.gameType === "facechinko" ? session.players[clientId].facechinkoUid || null : null,
       };
 
       // Tell the client they joined successfully (+ give resume token)
@@ -556,9 +646,10 @@ wss.on("connection", (ws) => {
 
     // NEW: Truck Of War late-join (allowed during "join" OR "active"; blocked only when "ended")
     if (msg.type === "playerJoinTow") {
-      const { code, username, seat } = msg;
+      const { code, username, fullName, seat } = msg;
       const cleanCode = lettersOnly(code || "");
       const uname = (username || "").trim();
+      const full = (fullName || "").trim();
       const seatId = (seat || "").trim().toUpperCase();
 
       const session = sessions.get(cleanCode);
@@ -582,6 +673,14 @@ wss.on("connection", (ws) => {
           type: "joinResult",
           ok: false,
           reason: "missing_username",
+        });
+        return;
+      }
+      if (!full) {
+        safeSend(ws, {
+          type: "joinResult",
+          ok: false,
+          reason: "missing_full_name",
         });
         return;
       }
@@ -617,6 +716,7 @@ wss.on("connection", (ws) => {
       session.players[clientId] = {
         ws,
         username: uname,
+        fullName: full,
         seat: seatId,
         teamIndex: null, // will be filled by adapter
         resumeToken,
@@ -627,6 +727,7 @@ wss.on("connection", (ws) => {
       const teamIndex = session.players[clientId].teamIndex;
       session.resumables[resumeToken] = {
         username: uname,
+        fullName: full,
         seat: seatId || null,
         teamIndex: teamIndex,
       };
@@ -650,7 +751,7 @@ wss.on("connection", (ws) => {
 
     // PLAYER RESUME (reconnect after accidental close/refresh)
     if (msg.type === "playerResume") {
-      const { code, resumeToken } = msg;
+      const { code, resumeToken, fullName } = msg;
       const cleanCode = lettersOnly(code || "");
       const session = sessions.get(cleanCode);
       if (!session) {
@@ -662,6 +763,7 @@ wss.on("connection", (ws) => {
         return;
       }
       const entry = session.resumables[resumeToken];
+      const full = (fullName || "").trim();
       if (!resumeToken || !entry) {
         safeSend(ws, {
           type: "resumeResult",
@@ -676,10 +778,7 @@ wss.on("connection", (ws) => {
       const existingPlayer = findPlayerByUsername(session, unameLower);
       if (existingPlayer) {
         try {
-          adapters[session.gameType].onPlayerLeave(
-            session,
-            existingPlayer.clientId
-          );
+          adapters[session.gameType].onPlayerLeave(session, existingPlayer.clientId);
         } catch (_) {}
         delete session.players[existingPlayer.clientId];
         try {
@@ -696,9 +795,20 @@ wss.on("connection", (ws) => {
       session.players[clientId] = {
         ws,
         username: entry.username,
+        fullName: full || entry.fullName || "",
         seat: entry.seat || "",
         teamIndex: entry.teamIndex, // keep the SAME team
+        // Facechinko: carry UID through resume so the adapter can map team/MVP consistently
+        facechinkoUid: session.gameType === "facechinko" ? entry.uid || null : null,
         resumeToken,
+      };
+
+      session.resumables[resumeToken] = {
+        username: entry.username,
+        fullName: full || entry.fullName || "",
+        seat: entry.seat || null,
+        teamIndex: entry.teamIndex,
+        uid: session.gameType === "facechinko" ? entry.uid || null : null,
       };
 
       // Tell adapter about a resume (so it can repopulate rosters + notify Unity)
@@ -720,6 +830,7 @@ wss.on("connection", (ws) => {
         type: "resumeResult",
         ok: true,
         username: entry.username,
+        fullName: full || entry.fullName || null,
         seat: entry.seat || null,
         teamIndex: entry.teamIndex,
         phase: session.phase,
@@ -791,9 +902,7 @@ wss.on("connection", (ws) => {
         return;
       }
 
-      console.log(
-        `[session ${session.code}] UNITY disconnected, starting grace timeout`
-      );
+      console.log(`[session ${session.code}] UNITY disconnected, starting grace timeout`);
 
       // Notify players that Unity is temporarily gone, but DON'T end yet
       broadcastToPlayers(session, {
@@ -821,8 +930,11 @@ wss.on("connection", (ws) => {
       if (player.resumeToken) {
         session.resumables[player.resumeToken] = {
           username: player.username,
+          fullName: player.fullName || "",
           seat: player.seat || null,
           teamIndex: player.teamIndex,
+          // Facechinko: persist UID so refresh/resume doesn't create a new identity
+          uid: session.gameType === "facechinko" ? player.facechinkoUid || null : null,
         };
       }
 
