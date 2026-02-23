@@ -6,15 +6,13 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Truck Of War Controller</title>
+    <title>Truck Of War Controller (Combi)</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div id="app">
-      <!-- Status Dot (top-left) -->
       <div id="statusDot" class="status-dot hidden" aria-hidden="true"></div>
 
-      <!-- ===== LOADING (overlay) ===== -->
       <div id="loading" class="loading hidden" aria-hidden="true">
         <div class="loading-card">
           <div class="spinner" aria-hidden="true"></div>
@@ -24,7 +22,6 @@
         </div>
       </div>
 
-      <!-- ===== ROUND POPUP (overlay) ===== -->
       <div id="roundPopup" class="round-popup hidden" aria-hidden="true">
         <div class="round-card">
           <div id="roundPopupTitle" class="round-title">ROUND</div>
@@ -32,12 +29,10 @@
         </div>
       </div>
 
-      <!-- ===== ERROR TOAST ===== -->
       <div id="toast" class="toast hidden" role="alert" aria-live="polite">
         <div id="toastText" class="toast-text">Error</div>
       </div>
 
-      <!-- ===== INPUT PAGE ===== -->
       <section id="viewInput" class="view">
         <div class="card">
           <div class="brand">
@@ -48,104 +43,54 @@
           <div class="form">
             <div id="roomCodeWrap">
               <label id="codeLabel" class="label" for="roomCode">Room Code</label>
-              <input
-                id="roomCode"
-                class="input"
-                type="text"
-                inputmode="latin"
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck="false"
-                maxlength="8"
-                placeholder="ABCD"
-              />
+              <input id="roomCode" class="input" type="text" maxlength="8" placeholder="ABCD" />
             </div>
 
             <label class="label" for="username">Username</label>
-            <input
-              id="username"
-              class="input"
-              type="text"
-              autocomplete="off"
-              autocapitalize="words"
-              spellcheck="false"
-              maxlength="24"
-              placeholder="Your name"
-            />
+            <input id="username" class="input" type="text" maxlength="24" placeholder="Your name" />
 
-            <button id="btnJoin" class="btn primary" type="button">
-              JOIN
-            </button>
-
-            <div class="hint">
-              Tip: If you scanned a QR, your room code may already be filled.
-            </div>
+            <button id="btnJoin" class="btn primary" type="button">JOIN</button>
           </div>
         </div>
       </section>
 
-      <!-- ===== CONTROL PAGE ===== -->
       <section id="viewControl" class="view hidden">
-        <div class="topbar">
-          <div class="pill" id="teamPill">TEAM —</div>
-          <div class="pill subtle" id="statusPill">WAITING</div>
-        </div>
+        <div class="arena">
+          <img id="teamBanner" class="team-banner hidden" alt="Team banner" />
 
-        <div class="center">
-          <button id="btnTap" class="tap-btn" type="button" disabled>
-            TAP
+          <button id="btnTap" class="tap-image-btn" type="button" disabled aria-label="Tap">
+            <img id="tapImage" src="./assets/Button_Active.png" alt="Tap button" />
           </button>
 
-          <div class="stats">
-            <div class="stat">
-              <div class="stat-label">Your Taps</div>
-              <div id="tapCount" class="stat-value">0</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Room</div>
-              <div id="roomView" class="stat-value small">—</div>
-            </div>
-          </div>
+          <img id="teamTruck" class="team-truck hidden" alt="Team truck" />
 
-          <div class="subhint" id="subhint">
-            Waiting for the game to start…
+          <div id="devPanel" class="dev-panel hidden">
+            <div><strong>Taps:</strong> <span id="tapCount">0</span></div>
+            <div><strong>Room:</strong> <span id="roomView">—</span></div>
+            <div><strong>UID:</strong> <span id="uidView">—</span></div>
           </div>
         </div>
       </section>
 
-      <!-- ===== END PAGE ===== -->
       <section id="viewEnd" class="view hidden">
-        <div class="card end-card">
-          <div id="endTitle" class="end-title">GAME OVER</div>
-          <div id="endResult" class="end-result">—</div>
+        <div class="arena end-arena">
+          <img id="teamBannerEnd" class="team-banner hidden" alt="Team banner" />
 
-          <div class="end-stats">
-            <div class="end-row">
-              <div class="end-k">Team</div>
-              <div id="endTeam" class="end-v">—</div>
+          <div class="card end-card">
+            <div id="endTitle" class="end-title">GAME OVER</div>
+            <div id="endResult" class="end-result">—</div>
+
+            <div class="end-stats">
+              <div class="end-row"><div class="end-k">Team</div><div id="endTeam" class="end-v">—</div></div>
+              <div class="end-row"><div class="end-k">Your Taps</div><div id="endTaps" class="end-v">0</div></div>
+              <div class="end-row"><div class="end-k">Team Rank</div><div id="endTTR" class="end-v">—</div></div>
+              <div class="end-row"><div class="end-k">Global Rank</div><div id="endGTR" class="end-v">—</div></div>
             </div>
-            <div class="end-row">
-              <div class="end-k">Your Taps</div>
-              <div id="endTaps" class="end-v">0</div>
-            </div>
-            <div class="end-row">
-              <div class="end-k">Team Rank</div>
-              <div id="endTTR" class="end-v">—</div>
-            </div>
-            <div class="end-row">
-              <div class="end-k">Global Rank</div>
-              <div id="endGTR" class="end-v">—</div>
-            </div>
+
+            <button id="btnRestart" class="btn" type="button">PLAY AGAIN</button>
           </div>
 
-          <div id="leaderboardWrap" class="leaderboard hidden">
-            <div class="leaderboard-title">Top 10 GTR</div>
-            <ol id="leaderboardList" class="leaderboard-list"></ol>
-          </div>
-
-          <button id="btnRestart" class="btn" type="button">
-            PLAY AGAIN
-          </button>
+          <img id="teamTruckEnd" class="team-truck hidden" alt="Team truck" />
         </div>
       </section>
     </div>

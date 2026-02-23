@@ -1,45 +1,19 @@
-/* Truck Of War — Player Controller
-   - Input → Loading → Control → End
-   - Persistent uid + resumeToken
-   - QR link auto-fills room code
-   - Sends taps ONLY when server phase === "active" (backend authoritative)
-   - Robust DOM null-guards (won’t crash if an element is missing)
-   - Supports round popups (ROUND WON/LOST, NEXT ROUND countdown) using:
-       roundEnd, roundStarting, roundLive (from truckofwar.js)
-*/
-
 "use strict";
 
-/** =========================
- *  CONFIG
- *  ========================= */
 const WS_URL = "wss://api.prologuebymetama.com/ws";
+const DEV_MODE = false;
 
 const DEFAULT_CODE_LEN = 4;
 const MAX_CODE_LEN = 8;
+const PRESS_FEEDBACK_MS = 100;
 
-/** Storage keys */
 const K_UID = "tow.uid";
-const K_SESSION = "tow.session"; // { code, username, resumeToken, teamIndex, phase, taps, ttr, gtr, won }
+const K_SESSION = "tow.session";
 
-/** =========================
- *  DOM helpers (safe)
- *  ========================= */
-function $(id) {
-  return document.getElementById(id);
-}
-function setText(el, text) {
-  if (!el) return;
-  el.textContent = text;
-}
-function setHidden(el, hidden) {
-  if (!el) return;
-  el.classList.toggle("hidden", !!hidden);
-}
-function setAttr(el, k, v) {
-  if (!el) return;
-  el.setAttribute(k, v);
-}
+function $(id) { return document.getElementById(id); }
+function setText(el, text) { if (el) el.textContent = text; }
+function setHidden(el, hidden) { if (el) el.classList.toggle("hidden", !!hidden); }
+function setAttr(el, key, val) { if (el) el.setAttribute(key, val); }
 
 const viewInput = $("viewInput");
 const viewControl = $("viewControl");
@@ -62,12 +36,17 @@ const roomCodeWrapEl = $("roomCodeWrap");
 const usernameEl = $("username");
 const btnJoin = $("btnJoin");
 
-const teamPill = $("teamPill");
-const statusPill = $("statusPill");
 const btnTap = $("btnTap");
+const tapImage = $("tapImage");
+const teamBanner = $("teamBanner");
+const teamTruck = $("teamTruck");
+const teamBannerEnd = $("teamBannerEnd");
+const teamTruckEnd = $("teamTruckEnd");
+
+const devPanel = $("devPanel");
 const tapCountEl = $("tapCount");
 const roomView = $("roomView");
-const subhint = $("subhint");
+const uidView = $("uidView");
 
 const endTitle = $("endTitle");
 const endResult = $("endResult");
@@ -76,196 +55,120 @@ const endTaps = $("endTaps");
 const endTTR = $("endTTR");
 const endGTR = $("endGTR");
 const btnRestart = $("btnRestart");
-const leaderboardWrap = $("leaderboardWrap");
-const leaderboardList = $("leaderboardList");
 
-/** =========================
- *  State
- *  ========================= */
 let ws = null;
 let isConnecting = false;
-
-let phase = "join"; // join | active | ended
-let teamIndex = null; // 0/1
+let phase = "join";
+let teamIndex = null;
 let taps = 0;
-
 let code = "";
 let username = "";
 let resumeToken = null;
-
 let canTap = false;
-
-/** Tap batching */
 let tapBuffer = 0;
 let tapFlushTimer = null;
-
-/** round popup countdown timer */
 let roundPopupTimer = null;
 let roundCountdownTimer = null;
 let hasSeenRoundEnd = false;
+let pressTimer = null;
 
-/** =========================
- *  UID
- *  ========================= */
 function getOrCreateUid() {
   let uid = localStorage.getItem(K_UID);
   if (uid) return uid;
-
-  if (window.crypto && crypto.randomUUID) {
-    uid = crypto.randomUUID();
-  } else {
-    uid =
-      "uid_" +
-      Math.random().toString(16).slice(2) +
-      "_" +
-      Date.now().toString(16);
-  }
-
+  uid = window.crypto?.randomUUID ? crypto.randomUUID() : "uid_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
   localStorage.setItem(K_UID, uid);
   return uid;
 }
-
 const clientUid = getOrCreateUid();
 
-/** =========================
- *  Session persistence
- *  ========================= */
 function loadSavedSession() {
   try {
     const raw = localStorage.getItem(K_SESSION);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
 }
-
 function saveSession(patch) {
-  const prev = loadSavedSession() || {};
-  const next = { ...prev, ...patch };
+  const next = { ...(loadSavedSession() || {}), ...patch };
   localStorage.setItem(K_SESSION, JSON.stringify(next));
   return next;
 }
+function clearSession() { localStorage.removeItem(K_SESSION); }
 
-function clearSession() {
-  localStorage.removeItem(K_SESSION);
+function normalizeCode(v) {
+  return (v || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, MAX_CODE_LEN);
 }
-
-/** =========================
- *  URL helpers
- *  ========================= */
+function parseCodeFromUrl() {
+  const u = new URL(window.location.href);
+  return normalizeCode((u.searchParams.get("cd") || u.searchParams.get("c") || "").trim());
+}
 function getCodeLenFromUrlOrDefault() {
   try {
-    const u = new URL(window.location.href);
-    const raw = (u.searchParams.get("len") || "").trim();
-    const n = Number(raw);
+    const n = Number((new URL(window.location.href)).searchParams.get("len") || "");
     if (Number.isFinite(n) && n >= 3 && n <= MAX_CODE_LEN) return n;
   } catch {}
   return DEFAULT_CODE_LEN;
 }
 const CODE_LEN = getCodeLenFromUrlOrDefault();
 
-function parseCodeFromUrl() {
-  const u = new URL(window.location.href);
-  const cd = (u.searchParams.get("cd") || "").trim();
-  if (cd) return normalizeCode(cd);
-
-  const c = (u.searchParams.get("c") || "").trim();
-  if (c) return normalizeCode(c);
-
-  return "";
+function getTeamAssets(idx) {
+  return idx === 0
+    ? { name: "TEAM A", banner: "./assets/Banner_TeamA.png", truck: "./assets/TruckA.png" }
+    : idx === 1
+      ? { name: "TEAM B", banner: "./assets/Banner_TeamB.png", truck: "./assets/TruckB.png" }
+      : { name: "TEAM —", banner: "", truck: "" };
 }
 
-function normalizeCode(v) {
-  return (v || "")
-    .toUpperCase()
-    .replace(/[^A-Z]/g, "")
-    .slice(0, MAX_CODE_LEN);
-}
-
-/** =========================
- *  UI
- *  ========================= */
 function showView(which) {
-  if (viewInput) viewInput.classList.add("hidden");
-  if (viewControl) viewControl.classList.add("hidden");
-  if (viewEnd) viewEnd.classList.add("hidden");
-
-  if (which === "input" && viewInput) viewInput.classList.remove("hidden");
-  if (which === "control" && viewControl) viewControl.classList.remove("hidden");
-  if (which === "end" && viewEnd) viewEnd.classList.remove("hidden");
+  setHidden(viewInput, which !== "input");
+  setHidden(viewControl, which !== "control");
+  setHidden(viewEnd, which !== "end");
 }
-
 function setLoading(on, title, sub) {
-  if (loading) {
-    loading.classList.toggle("hidden", !on);
-    setAttr(loading, "aria-hidden", on ? "false" : "true");
-  }
+  setHidden(loading, !on);
+  setAttr(loading, "aria-hidden", on ? "false" : "true");
   if (title) setText(loadingTitleEl, title);
   if (sub) setText(loadingSubEl, sub);
 }
-
 let toastTimer = null;
 function showToast(msg) {
   if (!toast || !toastText) return;
-  toastText.textContent = msg || "Something went wrong.";
-  toast.classList.remove("hidden");
+  setText(toastText, msg || "Something went wrong.");
+  setHidden(toast, false);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.add("hidden"), 2400);
+  toastTimer = setTimeout(() => setHidden(toast, true), 2400);
 }
-
 function setStatusDot(mode) {
-  // mode: "hidden" | "red" | "orange"
   if (!statusDot) return;
-  statusDot.classList.remove("hidden");
-  statusDot.classList.remove("is-red", "is-orange");
-
-  if (!mode || mode === "hidden") {
-    statusDot.classList.add("hidden");
-    return;
-  }
+  statusDot.classList.remove("is-red", "is-orange", "hidden");
+  if (mode === "hidden" || !mode) return statusDot.classList.add("hidden");
   if (mode === "red") statusDot.classList.add("is-red");
   if (mode === "orange") statusDot.classList.add("is-orange");
 }
 
 function showRoundPopup(title, body, ms) {
-  if (!roundPopup) return;
-
   clearTimeout(roundPopupTimer);
   clearInterval(roundCountdownTimer);
-
   setText(roundPopupTitle, title || "ROUND");
   setText(roundPopupBody, body || "");
   setHidden(roundPopup, false);
   setAttr(roundPopup, "aria-hidden", "false");
-
-  if (typeof ms === "number" && ms > 0) {
-    roundPopupTimer = setTimeout(() => {
-      hideRoundPopup();
-    }, ms);
-  }
+  if (typeof ms === "number" && ms > 0) roundPopupTimer = setTimeout(hideRoundPopup, ms);
 }
-
 function hideRoundPopup() {
-  if (!roundPopup) return;
   clearTimeout(roundPopupTimer);
   clearInterval(roundCountdownTimer);
   setHidden(roundPopup, true);
   setAttr(roundPopup, "aria-hidden", "true");
 }
-
 function showRoundCountdown(seconds) {
-  if (!roundPopup) return;
-
   let s = Math.max(0, Number(seconds) || 0);
   showRoundPopup("NEXT ROUND", `Starting in ${s}…`, 0);
-
   clearInterval(roundCountdownTimer);
   roundCountdownTimer = setInterval(() => {
     s -= 1;
     if (s <= 0) {
       setText(roundPopupBody, "GO!");
-      setTimeout(() => hideRoundPopup(), 500);
+      setTimeout(hideRoundPopup, 500);
       clearInterval(roundCountdownTimer);
       roundCountdownTimer = null;
       return;
@@ -276,30 +179,33 @@ function showRoundCountdown(seconds) {
 
 function setTeamUI(idx) {
   teamIndex = typeof idx === "number" ? idx : teamIndex;
-  const label = teamIndex === 0 ? "TEAM A" : teamIndex === 1 ? "TEAM B" : "TEAM —";
-  setText(teamPill, label);
+  const team = getTeamAssets(teamIndex);
+  if (team.banner) {
+    if (teamBanner) teamBanner.src = team.banner;
+    if (teamBannerEnd) teamBannerEnd.src = team.banner;
+    if (teamTruck) teamTruck.src = team.truck;
+    if (teamTruckEnd) teamTruckEnd.src = team.truck;
+    setHidden(teamBanner, false);
+    setHidden(teamTruck, false);
+    setHidden(teamBannerEnd, false);
+    setHidden(teamTruckEnd, false);
+  }
   saveSession({ teamIndex });
+  setText(endTeam, team.name);
 }
 
 function setPhaseUI(p) {
   phase = p || phase;
   saveSession({ phase });
-
   if (phase === "active") {
-    setText(statusPill, "PLAY");
-    setText(subhint, "Tap as fast as you can!");
     canTap = true;
     if (btnTap) btnTap.disabled = false;
     setStatusDot("hidden");
   } else if (phase === "ended") {
-    setText(statusPill, "ENDED");
-    setText(subhint, "Game ended.");
     canTap = false;
     if (btnTap) btnTap.disabled = true;
     setStatusDot("hidden");
   } else {
-    setText(statusPill, "WAITING");
-    setText(subhint, "Waiting for the game to start…");
     canTap = false;
     if (btnTap) btnTap.disabled = true;
     setStatusDot("red");
@@ -309,36 +215,31 @@ function setPhaseUI(p) {
 function setTapUI(count) {
   taps = Math.max(0, Number(count) || 0);
   setText(tapCountEl, String(taps));
+  setText(endTaps, String(taps));
   saveSession({ taps });
+}
+
+function setTapPressedVisual(pressed) {
+  if (!tapImage) return;
+  tapImage.src = pressed ? "./assets/Button_Inactive.png" : "./assets/Button_Active.png";
 }
 
 function goToControl() {
   setText(roomView, code || "—");
+  setText(uidView, clientUid);
+  setHidden(devPanel, !DEV_MODE);
   showView("control");
 }
 
 function goToEnd({ won, ttr, gtr, winningTeamLabel, isTie = false }) {
   showView("end");
-
-  const teamLabel =
-    teamIndex === 0 ? "TEAM A" : teamIndex === 1 ? "TEAM B" : "TEAM —";
-  setText(endTeam, teamLabel);
-  setText(endTaps, String(taps));
   setText(endTTR, typeof ttr === "number" ? String(ttr) : "—");
   setText(endGTR, typeof gtr === "number" ? String(gtr) : "—");
-
-  if (winningTeamLabel) setText(endTitle, `GAME OVER — ${winningTeamLabel}`);
-  else setText(endTitle, "GAME OVER");
-
-  if (isTie) setText(endResult, "TIE");
-  else setText(endResult, won ? "YOU WIN" : "YOU LOSE");
-
+  setText(endTitle, winningTeamLabel ? `GAME OVER — ${winningTeamLabel}` : "GAME OVER");
+  setText(endResult, isTie ? "TIE" : won ? "YOU WIN" : "YOU LOSE");
   saveSession({ won: !!won, ttr, gtr });
 }
 
-/** =========================
- *  WebSocket
- *  ========================= */
 function wsSend(obj) {
   if (!ws || ws.readyState !== 1) return false;
   ws.send(JSON.stringify(obj));
@@ -365,138 +266,55 @@ function connectAndJoin({ codeIn, usernameIn }) {
   }
 
   saveSession({ code, username, clientUid });
-
   setLoading(true, "Connecting…", "Please keep this page open.");
-  if (uidHint) {
-    setText(uidHint, `UID: ${clientUid}`);
-    setHidden(uidHint, true);
-  }
+  setText(uidHint, `UID: ${clientUid}`);
+  setHidden(uidHint, !DEV_MODE);
 
-  try {
-    if (ws) ws.close();
-  } catch {}
-  ws = null;
-
+  try { if (ws) ws.close(); } catch {}
   ws = new WebSocket(WS_URL);
 
-  const connectTimeout = setTimeout(() => {
-    showToast("Still connecting… please wait.");
-  }, 2200);
+  const connectTimeout = setTimeout(() => showToast("Still connecting… please wait."), 2200);
 
   ws.onopen = () => {
     clearTimeout(connectTimeout);
-
     const saved = loadSavedSession();
-    const savedToken =
-      saved &&
-      saved.code === code &&
-      saved.username === username &&
-      saved.resumeToken
-        ? saved.resumeToken
-        : null;
-
-    resumeToken = savedToken;
-
-    if (resumeToken) {
-      // IMPORTANT: server expects code + username + resumeToken
-      wsSend({
-        type: "playerResume",
-        code,
-        username,
-        resumeToken,
-      });
-    } else {
-      wsSend({
-        type: "playerJoinTow",
-        code,
-        username,
-      });
-    }
+    resumeToken = saved && saved.code === code && saved.username === username && saved.resumeToken ? saved.resumeToken : null;
+    wsSend(resumeToken ? { type: "playerResume", code, username, resumeToken } : { type: "playerJoinTow", code, username });
   };
 
   ws.onmessage = (ev) => {
     let msg = null;
-    try {
-      msg = JSON.parse(ev.data);
-    } catch {
-      return;
-    }
-
+    try { msg = JSON.parse(ev.data); } catch { return; }
     const t = msg.type;
 
-    // --- backend structured errors ---
     if (t === "joinResult" && msg.ok === false) {
-      setLoading(false);
-      isConnecting = false;
-      showToast(msg.message || msg.reason || "Join failed.");
-      return;
+      setLoading(false); isConnecting = false; showToast(msg.message || msg.reason || "Join failed."); return;
     }
     if (t === "resumeResult" && msg.ok === false) {
-      // token invalid → clear and force rejoin
-      clearSession();
-      resumeToken = null;
-      setLoading(false);
-      isConnecting = false;
-      showToast(msg.message || "Session expired. Please join again.");
-      showView("input");
-      return;
+      clearSession(); resumeToken = null; setLoading(false); isConnecting = false; showToast(msg.message || "Session expired. Please join again."); showView("input"); return;
     }
-
-    // generic error wrapper
     if (t === "error" || msg.ok === false) {
-      setLoading(false);
-      isConnecting = false;
-      showToast(msg.error || msg.message || "Connection error.");
-      return;
+      setLoading(false); isConnecting = false; showToast(msg.error || msg.message || "Connection error."); return;
     }
 
-    // --- join / resume acknowledgements ---
     if ((t === "joinResult" || t === "joined" || t === "playerJoined") && msg.ok !== false) {
       if (typeof msg.teamIndex === "number") setTeamUI(msg.teamIndex);
-      if (msg.resumeToken) {
-        resumeToken = msg.resumeToken;
-        saveSession({ resumeToken });
-      }
+      if (msg.resumeToken) { resumeToken = msg.resumeToken; saveSession({ resumeToken }); }
       if (msg.phase) setPhaseUI(msg.phase);
       if (typeof msg.taps === "number") setTapUI(msg.taps);
-
-      setLoading(false);
-      isConnecting = false;
-      goToControl();
-      return;
+      setLoading(false); isConnecting = false; goToControl(); return;
     }
 
     if ((t === "resumeResult" || t === "resumed" || t === "playerResumed") && msg.ok !== false) {
       if (typeof msg.teamIndex === "number") setTeamUI(msg.teamIndex);
-      if (msg.resumeToken) {
-        resumeToken = msg.resumeToken;
-        saveSession({ resumeToken });
-      }
+      if (msg.resumeToken) { resumeToken = msg.resumeToken; saveSession({ resumeToken }); }
       if (msg.phase) setPhaseUI(msg.phase);
       if (typeof msg.taps === "number") setTapUI(msg.taps);
-
-      setLoading(false);
-      isConnecting = false;
-      goToControl();
-      return;
+      setLoading(false); isConnecting = false; goToControl(); return;
     }
 
-    // --- phase updates ---
-    if (t === "phase") {
-      if (msg.phase) setPhaseUI(msg.phase);
-      return;
-    }
-
-    // --- paused / ended ---
-    if (t === "paused") {
-      setStatusDot("orange");
-      setPhaseUI("join");
-      setText(statusPill, "PAUSED");
-      setText(subhint, "Game paused — reconnecting…");
-      if (btnTap) btnTap.disabled = true;
-      canTap = false;
-      return;
-    }
+    if (t === "phase") { if (msg.phase) setPhaseUI(msg.phase); return; }
+    if (t === "paused") { setStatusDot("orange"); setPhaseUI("join"); return; }
 
     if (t === "ended") {
       setPhaseUI("ended");
@@ -504,84 +322,48 @@ function connectAndJoin({ codeIn, usernameIn }) {
       return;
     }
 
-    /* =========================
-       Round UX (matches truckofwar.js)
-       - roundEnd: { result:"won"|"lost", roundIndex, winnerTeamIndex }
-       - roundStarting: { bufferSeconds, roundIndex }
-       - roundLive: { roundIndex }
-    ========================= */
     if (t === "roundEnd") {
       hasSeenRoundEnd = true;
-      const res = String(msg.result || "").toLowerCase();
-      const title = res === "won" ? "ROUND WON!" : "ROUND LOST!";
-      showRoundPopup(title, "Please wait for next round…", 2200);
-
-      // while waiting, you can keep taps disabled until roundLive arrives (optional)
+      showRoundPopup(String(msg.result || "").toLowerCase() === "won" ? "ROUND WON!" : "ROUND LOST!", "Please wait for next round…", 2200);
       canTap = false;
       if (btnTap) btnTap.disabled = true;
-      setText(statusPill, "WAITING");
       return;
     }
 
     if (t === "roundStarting") {
       if (!hasSeenRoundEnd) return;
-      const secs = Number(msg.bufferSeconds ?? msg.seconds ?? 3);
-      showRoundCountdown(secs);
-
-      // still disabled until roundLive
+      showRoundCountdown(Number(msg.bufferSeconds ?? msg.seconds ?? 3));
       canTap = false;
       if (btnTap) btnTap.disabled = true;
-      setText(statusPill, "WAITING");
       return;
     }
 
     if (t === "roundLive") {
       hideRoundPopup();
-      // If game phase is active, allow taps (some setups keep phase active across rounds)
       if (phase === "active") {
         canTap = true;
         if (btnTap) btnTap.disabled = false;
-        setText(statusPill, "PLAY");
-        setText(subhint, "Tap as fast as you can!");
       }
       return;
     }
 
-    // --- final result ---
     if (t === "gameResult") {
       if (typeof msg.taps === "number") setTapUI(msg.taps);
-
       const st = String(msg.state || "").toLowerCase();
-      const isTie = st === "tie";
-      const won =
-        st === "winner" || st === "win" || st === "won" || st === "victory";
-
-      const winningTeamLabel = msg.winningTeam ? String(msg.winningTeam) : null;
-
       goToEnd({
-        won,
-        isTie,
+        won: st === "winner" || st === "win" || st === "won" || st === "victory",
+        isTie: st === "tie",
         ttr: typeof msg.ttr === "number" ? msg.ttr : null,
         gtr: typeof msg.gtr === "number" ? msg.gtr : null,
-        winningTeamLabel,
-        leaderboard: Array.isArray(msg.topGtr) ? msg.topGtr : null,
+        winningTeamLabel: msg.winningTeam ? String(msg.winningTeam) : null,
       });
       return;
     }
 
-    // --- tap echo (optional) ---
-    if (t === "tap") {
-      if (typeof msg.taps === "number") setTapUI(msg.taps);
-      return;
-    }
+    if (t === "tap" && typeof msg.taps === "number") setTapUI(msg.taps);
   };
 
-  ws.onerror = () => {
-    setLoading(false);
-    isConnecting = false;
-    showToast("WebSocket error. Check connection / URL.");
-  };
-
+  ws.onerror = () => { setLoading(false); isConnecting = false; showToast("WebSocket error. Check connection / URL."); };
   ws.onclose = () => {
     if (phase !== "ended" && resumeToken && code && username) {
       setTimeout(() => {
@@ -592,134 +374,78 @@ function connectAndJoin({ codeIn, usernameIn }) {
   };
 }
 
-/** =========================
- *  Tap sending (ONLY when active)
- *  Backend is authoritative.
- *  ========================= */
 function queueTap(amount) {
   if (!canTap) return;
-
   const inc = Math.max(1, Number(amount) || 1);
   tapBuffer += inc;
-
-  // optimistic UI
   setTapUI(taps + inc);
-
-  if (!tapFlushTimer) {
-    tapFlushTimer = setTimeout(flushTaps, 90);
-  }
+  if (!tapFlushTimer) tapFlushTimer = setTimeout(flushTaps, 90);
 }
-
 function flushTaps() {
   tapFlushTimer = null;
   if (!tapBuffer) return;
-  if (!ws || ws.readyState !== 1) {
-    tapBuffer = 0;
-    return;
-  }
-
-  // IMPORTANT: include code + username for server.js routing
-  wsSend({
-    type: "playerMsg",
-    code,
-    username,
-    payload: {
-      kind: "tap",
-      count: tapBuffer,
-    },
-  });
-
+  if (!ws || ws.readyState !== 1) { tapBuffer = 0; return; }
+  wsSend({ type: "playerMsg", code, username, payload: { kind: "tap", count: tapBuffer } });
   tapBuffer = 0;
 }
 
-/** =========================
- *  Boot
- *  ========================= */
 function boot() {
-  if (uidHint) {
-    setText(uidHint, `UID: ${clientUid}`);
-    setHidden(uidHint, true);
-  }
+  setText(uidHint, `UID: ${clientUid}`);
+  setHidden(uidHint, !DEV_MODE);
+  setText(uidView, clientUid);
 
   if (codeLabelEl) setText(codeLabelEl, "Room Code");
   if (roomCodeEl) roomCodeEl.maxLength = String(MAX_CODE_LEN);
 
   const urlCode = parseCodeFromUrl();
   if (roomCodeEl && urlCode) roomCodeEl.value = urlCode;
-  if (roomCodeWrapEl) setHidden(roomCodeWrapEl, !!urlCode);
+  setHidden(roomCodeWrapEl, !!urlCode);
 
   const saved = loadSavedSession();
-  if (usernameEl && saved && saved.username) usernameEl.value = saved.username;
-  if (roomCodeEl && !roomCodeEl.value && saved && saved.code) {
-    roomCodeEl.value = normalizeCode(saved.code);
-  }
+  if (usernameEl && saved?.username) usernameEl.value = saved.username;
+  if (roomCodeEl && !roomCodeEl.value && saved?.code) roomCodeEl.value = normalizeCode(saved.code);
 
-  if (roomCodeEl && usernameEl) {
-    if (roomCodeEl.value) usernameEl.focus();
-    else roomCodeEl.focus();
-  }
-
-  if (roomCodeEl) {
-    roomCodeEl.addEventListener("input", () => {
-      roomCodeEl.value = normalizeCode(roomCodeEl.value);
-    });
-  }
-
-  if (btnJoin) {
-    btnJoin.addEventListener("click", () => {
-      connectAndJoin({
-        codeIn: roomCodeEl ? roomCodeEl.value : "",
-        usernameIn: usernameEl ? usernameEl.value : "",
-      });
-    });
-  }
+  if (roomCodeEl) roomCodeEl.addEventListener("input", () => { roomCodeEl.value = normalizeCode(roomCodeEl.value); });
+  if (btnJoin) btnJoin.addEventListener("click", () => connectAndJoin({ codeIn: roomCodeEl?.value || "", usernameIn: usernameEl?.value || "" }));
 
   [roomCodeEl, usernameEl].forEach((el) => {
     if (!el) return;
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        if (btnJoin) btnJoin.click();
+        btnJoin?.click();
       }
     });
   });
 
   if (btnTap) {
-    btnTap.addEventListener("click", () => queueTap(1));
-    btnTap.addEventListener(
-      "touchstart",
-      (e) => {
-        e.preventDefault();
-        queueTap(1);
-      },
-      { passive: false }
-    );
+    const tapHandler = (e) => {
+      if (e) e.preventDefault();
+      queueTap(1);
+      if (pressTimer) clearTimeout(pressTimer);
+      setTapPressedVisual(true);
+      pressTimer = setTimeout(() => {
+        setTapPressedVisual(false);
+        pressTimer = null;
+      }, PRESS_FEEDBACK_MS);
+    };
+
+    btnTap.addEventListener("click", tapHandler);
+    btnTap.addEventListener("touchstart", tapHandler, { passive: false });
   }
 
   if (btnRestart) {
     btnRestart.addEventListener("click", () => {
       clearSession();
-      phase = "join";
-      canTap = false;
-      taps = 0;
-      teamIndex = null;
-      resumeToken = null;
-
+      phase = "join"; canTap = false; taps = 0; teamIndex = null; resumeToken = null;
       hideRoundPopup();
-
-      try {
-        if (ws) ws.close();
-      } catch {}
+      try { if (ws) ws.close(); } catch {}
       ws = null;
-
       setTapUI(0);
       setPhaseUI("join");
-      setText(teamPill, "TEAM —");
-      setText(statusPill, "WAITING");
-
+      setTapPressedVisual(false);
       const urlCode2 = parseCodeFromUrl();
       if (roomCodeEl) roomCodeEl.value = urlCode2 || "";
-
       showView("input");
     });
   }
@@ -727,6 +453,7 @@ function boot() {
   showView("input");
   setLoading(false);
   setPhaseUI("join");
+  setHidden(devPanel, !DEV_MODE);
 }
 
 boot();
